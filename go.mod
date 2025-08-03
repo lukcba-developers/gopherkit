@@ -5,15 +5,18 @@ go 1.24.5
 require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/go-playground/validator/v10 v10.26.0
-	github.com/go-redis/redis/v8 v8.11.5
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.9.2
 	github.com/jmoiron/sqlx v1.4.0
+	github.com/lib/pq v1.10.9
 	github.com/nats-io/nats.go v1.43.0
 	github.com/pquerna/otp v1.5.0
+	github.com/redis/go-redis/v9 v9.2.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
+	github.com/testcontainers/testcontainers-go v0.24.1
+	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.30.1
 )
 
