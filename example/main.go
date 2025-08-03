@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/your-username/gopherkit"
+	"github.com/lukcba-developers/gopherkit"
 )
 
 func main() {
