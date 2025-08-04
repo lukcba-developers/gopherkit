@@ -4,10 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/go-redis/redis/v8"
 	"github.com/sirupsen/logrus"
 )
 
@@ -94,7 +93,7 @@ type UnifiedCache struct {
 	config       *CacheConfig
 	redisClient  *redis.Client
 	memoryCache  *MemoryCache
-	logger       *logrus.Logger
+	logger       *logrus.Entry
 	metrics      *CacheMetrics
 }
 
@@ -139,17 +138,17 @@ func NewUnifiedCache(config *CacheConfig, logger *logrus.Logger) (*UnifiedCache,
 // initRedis inicializa el cliente Redis
 func (c *UnifiedCache) initRedis() error {
 	rdb := redis.NewClient(&redis.Options{
-		Addr:               c.config.RedisHost + ":" + c.config.RedisPort,
-		Password:           c.config.RedisPassword,
-		DB:                 c.config.RedisDB,
-		PoolSize:           c.config.PoolSize,
-		MinIdleConns:       c.config.MinIdleConns,
-		ConnMaxLifetime:    c.config.MaxConnAge,
-		PoolTimeout:        c.config.PoolTimeout,
-		ConnMaxIdleTime:    c.config.IdleTimeout,
-		ReadTimeout:        c.config.ReadTimeout,
-		WriteTimeout:       c.config.WriteTimeout,
-		DialTimeout:        c.config.DialTimeout,
+		Addr:         c.config.RedisHost + ":" + c.config.RedisPort,
+		Password:     c.config.RedisPassword,
+		DB:           c.config.RedisDB,
+		PoolSize:     c.config.PoolSize,
+		MinIdleConns: c.config.MinIdleConns,
+		MaxConnAge:   c.config.MaxConnAge,
+		PoolTimeout:  c.config.PoolTimeout,
+		IdleTimeout:  c.config.IdleTimeout,
+		ReadTimeout:  c.config.ReadTimeout,
+		WriteTimeout: c.config.WriteTimeout,
+		DialTimeout:  c.config.DialTimeout,
 	})
 
 	// Test connection

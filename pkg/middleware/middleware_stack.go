@@ -20,7 +20,7 @@ type MiddlewareStack struct {
 	RedisClient     *redis.Client
 	
 	// Configurations
-	CORSConfig           *cors.CORSConfig
+	CORSConfig           *cors.Config
 	LoggingConfig        *logging.LoggingConfig
 	MetricsConfig        *metrics.MetricsConfig
 	RateLimitConfig      *ratelimit.RateLimitConfig
@@ -51,7 +51,7 @@ type MiddlewareStack struct {
 func DefaultMiddlewareStack(logger *logrus.Logger, serviceName string) *MiddlewareStack {
 	return &MiddlewareStack{
 		Logger:                 logger,
-		CORSConfig:            cors.DefaultCORSConfig(),
+		CORSConfig:            cors.DefaultConfig(),
 		LoggingConfig:         logging.DefaultLoggingConfig(),
 		MetricsConfig:         metrics.DefaultMetricsConfig(),
 		RateLimitConfig:       ratelimit.DefaultRateLimitConfig(),
@@ -94,7 +94,6 @@ func ProductionMiddlewareStack(logger *logrus.Logger, serviceName string) *Middl
 	stack.Environment = "production"
 	stack.LoggingConfig.LogBody = false
 	stack.LoggingConfig.LogHeaders = false
-	stack.LoggingConfig.LogLevel = logrus.WarnLevel
 	stack.RecoveryConfig.EnableDetailedError = false
 	stack.RecoveryConfig.EnableStackTrace = false
 	stack.CORSConfig.AllowAllOrigins = false
@@ -156,7 +155,7 @@ func (ms *MiddlewareStack) ApplyMiddlewares(router *gin.Engine) {
 	
 	// 2. CORS middleware
 	if ms.EnableCORS {
-		router.Use(cors.CORSMiddleware(ms.CORSConfig))
+		router.Use(cors.Middleware(ms.CORSConfig))
 	}
 	
 	// 3. Logging middleware (structured logging with correlation IDs)

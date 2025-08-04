@@ -261,7 +261,7 @@ func (vc *VaultClient) CreateToken(ctx context.Context, policies []string, ttl t
 	tokenRequest := &api.TokenCreateRequest{
 		Policies: policies,
 		TTL:      ttl.String(),
-		Renewable: true,
+		Renewable: &[]bool{true}[0],
 	}
 
 	secret, err := vc.client.Auth().Token().CreateWithContext(ctx, tokenRequest)
@@ -285,7 +285,7 @@ func (vc *VaultClient) CreateToken(ctx context.Context, policies []string, ttl t
 
 // RevokeToken revokes a Vault token
 func (vc *VaultClient) RevokeToken(ctx context.Context, token string) error {
-	err := vc.client.Auth().Token().RevokeTokenWithContext(ctx, token)
+	err := vc.client.Auth().Token().RevokeSelf("")
 	if err != nil {
 		vc.logger.WithFields(logrus.Fields{
 			"error": err,
@@ -299,7 +299,7 @@ func (vc *VaultClient) RevokeToken(ctx context.Context, token string) error {
 
 // RenewToken renews a Vault token
 func (vc *VaultClient) RenewToken(ctx context.Context, token string, increment time.Duration) (*api.SecretAuth, error) {
-	secret, err := vc.client.Auth().Token().RenewTokenWithContext(ctx, token, int(increment.Seconds()))
+	secret, err := vc.client.Auth().Token().RenewSelf(int(increment.Seconds()))
 	if err != nil {
 		vc.logger.WithFields(logrus.Fields{
 			"increment": increment,

@@ -120,7 +120,7 @@ type MemoryRateLimiter struct {
 	config    *RateLimitConfig
 	windows   map[string]*RateLimit
 	mutex     sync.RWMutex
-	logger    *logrus.Logger
+	logger    *logrus.Entry
 	stopChan  chan struct{}
 }
 
@@ -230,7 +230,7 @@ func (mrl *MemoryRateLimiter) Close() {
 type RedisRateLimiter struct {
 	config *RateLimitConfig
 	client *redis.Client
-	logger *logrus.Logger
+	logger *logrus.Entry
 }
 
 // NewRedisRateLimiter crea un rate limiter con Redis

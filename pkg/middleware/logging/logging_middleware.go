@@ -10,6 +10,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Constants for context keys
+const (
+	LoggerKey = "logger"
+)
+
 // LoggingConfig configuración del middleware de logging
 type LoggingConfig struct {
 	// Request/Response logging
@@ -132,7 +137,7 @@ func LoggingMiddleware(logger *logrus.Logger, config *LoggingConfig) gin.Handler
 		// Capture request body if enabled
 		var requestBody []byte
 		if config.LogBody {
-			requestBody = readAndRestoreBody(c.Request)
+			requestBody = readAndRestoreBody(c)
 			if len(requestBody) > 0 && len(requestBody) <= config.MaxBodySize {
 				baseFields["request_body"] = string(requestBody)
 			}

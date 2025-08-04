@@ -5,7 +5,6 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	"github.com/lukcba-developers/gopherkit/pkg/domain/entity"

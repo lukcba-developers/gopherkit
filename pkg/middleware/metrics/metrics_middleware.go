@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -88,7 +89,7 @@ type MetricsCollector interface {
 // InMemoryMetricsCollector implementación en memoria para desarrollo/testing
 type InMemoryMetricsCollector struct {
 	config   *MetricsConfig
-	logger   *logrus.Logger
+	logger   *logrus.Entry
 	mutex    sync.RWMutex
 	
 	// Counters
@@ -480,7 +481,7 @@ func shouldSkipMethod(method string, skipMethods []string) bool {
 
 func normalizePath(path string, patterns map[string]string) string {
 	// Simple path normalization - in production, use proper regex
-	for pattern, replacement := range patterns {
+	for pattern, _ := range patterns {
 		// This is a simplified implementation
 		// In production, you would use regexp.MustCompile(pattern).ReplaceAllString(path, replacement)
 		if strings.Contains(path, strings.Split(pattern, "/")[len(strings.Split(pattern, "/"))-2]) {
@@ -523,7 +524,7 @@ func MetricsHandler(collector MetricsCollector) gin.HandlerFunc {
 type PrometheusExporter struct {
 	collector MetricsCollector
 	config    *MetricsConfig
-	logger    *logrus.Logger
+	logger    *logrus.Entry
 }
 
 // NewPrometheusExporter crea un nuevo exportador de Prometheus

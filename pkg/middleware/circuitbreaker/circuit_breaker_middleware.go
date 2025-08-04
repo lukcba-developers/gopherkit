@@ -2,7 +2,6 @@ package circuitbreaker
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -81,7 +80,7 @@ type CircuitBreaker struct {
 	failureCount     int
 	successCount     int
 	lastFailureTime  time.Time
-	logger           *logrus.Logger
+	logger           *logrus.Entry
 	mutex            sync.RWMutex
 }
 
