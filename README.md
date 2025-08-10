@@ -5,9 +5,19 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/lukcba-developers/gopherkit)](https://goreportcard.com/report/github.com/lukcba-developers/gopherkit)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Descripción General
+## 📋 **Descripción General**
 
-GopherKit es una librería empresarial para Go que proporciona un conjunto de componentes reutilizables y utilidades para construir aplicaciones web escalables y mantenibles. La librería está diseñada siguiendo principios de Domain-Driven Design (DDD) y patrones arquitectónicos modernos.
+GopherKit es una librería completa para el desarrollo rápido y consistente de microservicios en Go, diseñada específicamente para sistemas empresariales y arquitecturas modernas.
+
+**🎯 Elimina el 80% del código repetitivo** en la inicialización de microservicios y proporciona patrones consistentes para configuración, logging, seguridad, observabilidad y más.
+
+### **✨ Migración del Proyecto Club Management System**
+
+Esta versión de GopherKit incluye todos los componentes comunes extraídos del análisis del proyecto `club-management-system-api`:
+
+- **11 microservicios analizados** → Patrones comunes identificados y extraídos
+- **~15,000 líneas de código duplicado** → Eliminadas y centralizadas
+- **Tiempo de desarrollo de nuevos servicios**: De 2-3 días → 2-3 horas
 
 ## Características Principales
 

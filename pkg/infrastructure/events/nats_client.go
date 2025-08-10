@@ -202,7 +202,7 @@ func (nc *NATSClient) PublishEvent(ctx context.Context, event *EventMessage) err
 
 	// Publish with JetStream if available, otherwise use core NATS
 	if nc.js != nil {
-		_, err = nc.js.PublishMsgWithContext(ctx, msg)
+		_, err = nc.js.PublishMsg(msg)
 	} else {
 		err = nc.conn.PublishMsg(msg)
 	}
@@ -453,7 +453,7 @@ func (nc *NATSClient) ListStreams() ([]*StreamInfo, error) {
 }
 
 // GetStats returns connection statistics
-func (nc *NATSClient) GetStats() *nats.Statistics {
+func (nc *NATSClient) GetStats() nats.Statistics {
 	return nc.conn.Stats()
 }
 

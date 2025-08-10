@@ -1,546 +1,206 @@
 package metrics
 
 import (
-	"strconv"
-	"strings"
-	"sync"
+	"context"
+	"runtime"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	"github.com/lukcba-developers/gopherkit/pkg/logger"
+	"github.com/lukcba-developers/gopherkit/pkg/metrics"
 )
 
-// MetricsConfig configuración del middleware de métricas
-type MetricsConfig struct {
-	// Metric collection settings
-	EnableRequestMetrics   bool
-	EnableResponseMetrics  bool
-	EnableDurationMetrics  bool
-	EnablePathMetrics      bool
-	EnableMethodMetrics    bool
-	EnableStatusMetrics    bool
-	EnableTenantMetrics    bool
-	
-	// Path normalization
-	NormalizePaths         bool
-	PathPatterns          map[string]string // Regex patterns to normalize paths
-	
-	// Filtering
-	SkipPaths             []string
-	SkipMethods           []string
-	
-	// Buckets for histogram metrics
-	DurationBuckets       []float64
-	
-	// Business metrics
-	EnableBusinessMetrics bool
-	BusinessEventTypes    []string
+// MetricsMiddleware proporciona middleware de métricas para Gin
+type MetricsMiddleware struct {
+	metrics *metrics.PrometheusMetrics
+	logger  logger.Logger
 }
 
-// DefaultMetricsConfig retorna configuración por defecto
-func DefaultMetricsConfig() *MetricsConfig {
-	return &MetricsConfig{
-		EnableRequestMetrics:   true,
-		EnableResponseMetrics:  true,
-		EnableDurationMetrics:  true,
-		EnablePathMetrics:      true,
-		EnableMethodMetrics:    true,
-		EnableStatusMetrics:    true,
-		EnableTenantMetrics:    true,
-		NormalizePaths:         true,
-		PathPatterns: map[string]string{
-			`/api/v1/users/[^/]+`:        "/api/v1/users/{id}",
-			`/api/v1/bookings/[^/]+`:     "/api/v1/bookings/{id}",
-			`/api/v1/facilities/[^/]+`:   "/api/v1/facilities/{id}",
-			`/api/v1/payments/[^/]+`:     "/api/v1/payments/{id}",
-		},
-		SkipPaths:   []string{"/health", "/metrics", "/ping"},
-		SkipMethods: []string{},
-		DurationBuckets: []float64{
-			0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-		},
-		EnableBusinessMetrics: true,
-		BusinessEventTypes: []string{
-			"booking_created", "booking_cancelled", "payment_processed",
-			"user_registered", "notification_sent",
-		},
+// NewMetricsMiddleware crea un nuevo middleware de métricas
+func NewMetricsMiddleware(m *metrics.PrometheusMetrics, logger logger.Logger) *MetricsMiddleware {
+	return &MetricsMiddleware{
+		metrics: m,
+		logger:  logger,
 	}
 }
 
-// MetricsCollector interfaz para recolección de métricas
-type MetricsCollector interface {
-	// HTTP metrics
-	RecordHTTPRequest(method, path, status string, duration time.Duration, tenantID string)
-	RecordHTTPDuration(method, path string, duration time.Duration)
-	RecordHTTPStatus(method, path, status string)
-	
-	// Business metrics
-	RecordBusinessEvent(eventType, tenantID string, metadata map[string]interface{})
-	RecordCounter(name string, labels map[string]string, value float64)
-	RecordGauge(name string, labels map[string]string, value float64)
-	RecordHistogram(name string, labels map[string]string, value float64)
-	
-	// Error metrics
-	RecordError(errorType, tenantID, service string)
-	RecordSecurityThreatDetected(threatType, severity, tenantID, userID string)
-	RecordSecurityValidationFailed(validationType, tenantID, reason string)
+// GinMiddleware devuelve el middleware de Gin para métricas
+func (m *MetricsMiddleware) GinMiddleware() gin.HandlerFunc {
+	return m.metrics.GinMiddleware()
 }
 
-// InMemoryMetricsCollector implementación en memoria para desarrollo/testing
-type InMemoryMetricsCollector struct {
-	config   *MetricsConfig
-	logger   *logrus.Entry
-	mutex    sync.RWMutex
-	
-	// Counters
-	counters   map[string]float64
-	
-	// Gauges
-	gauges     map[string]float64
-	
-	// Histograms (simple implementation)
-	histograms map[string][]float64
-	
-	// Business events
-	businessEvents []BusinessEvent
-}
+// SystemMetricsCollector inicia la recolección automática de métricas del sistema
+func (m *MetricsMiddleware) SystemMetricsCollector(ctx context.Context) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
 
-// BusinessEvent representa un evento de negocio
-type BusinessEvent struct {
-	Type      string                 `json:"type"`
-	TenantID  string                 `json:"tenant_id"`
-	Timestamp time.Time              `json:"timestamp"`
-	Metadata  map[string]interface{} `json:"metadata"`
-}
-
-// NewInMemoryMetricsCollector crea un nuevo recolector en memoria
-func NewInMemoryMetricsCollector(config *MetricsConfig, logger *logrus.Logger) *InMemoryMetricsCollector {
-	return &InMemoryMetricsCollector{
-		config:         config,
-		logger:         logger.WithField("component", "metrics_collector"),
-		counters:       make(map[string]float64),
-		gauges:         make(map[string]float64),
-		histograms:     make(map[string][]float64),
-		businessEvents: make([]BusinessEvent, 0),
-	}
-}
-
-// RecordHTTPRequest registra una request HTTP
-func (imc *InMemoryMetricsCollector) RecordHTTPRequest(method, path, status string, duration time.Duration, tenantID string) {
-	imc.mutex.Lock()
-	defer imc.mutex.Unlock()
-
-	// Record request counter
-	if imc.config.EnableRequestMetrics {
-		key := imc.buildMetricKey("http_requests_total", map[string]string{
-			"method":    method,
-			"path":      path,
-			"status":    status,
-			"tenant_id": tenantID,
-		})
-		imc.counters[key]++
-	}
-
-	// Record duration
-	if imc.config.EnableDurationMetrics {
-		key := imc.buildMetricKey("http_request_duration_seconds", map[string]string{
-			"method":    method,
-			"path":      path,
-			"tenant_id": tenantID,
-		})
-		if _, exists := imc.histograms[key]; !exists {
-			imc.histograms[key] = make([]float64, 0)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.collectSystemMetrics()
 		}
-		imc.histograms[key] = append(imc.histograms[key], duration.Seconds())
 	}
 }
 
-// RecordHTTPDuration registra la duración de una request HTTP
-func (imc *InMemoryMetricsCollector) RecordHTTPDuration(method, path string, duration time.Duration) {
-	if !imc.config.EnableDurationMetrics {
-		return
-	}
+func (m *MetricsMiddleware) collectSystemMetrics() {
+	// Recolectar métricas de runtime
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
 
-	imc.mutex.Lock()
-	defer imc.mutex.Unlock()
+	// Actualizar métricas
+	m.metrics.SetGoroutines(runtime.NumGoroutine())
+	m.metrics.SetMemoryUsage(memStats.Alloc)
 
-	key := imc.buildMetricKey("http_duration_seconds", map[string]string{
-		"method": method,
-		"path":   path,
+	m.logger.LogBusinessEvent(context.Background(), "system_metrics_collected", map[string]interface{}{
+		"goroutines":      runtime.NumGoroutine(),
+		"memory_alloc":    memStats.Alloc,
+		"memory_sys":      memStats.Sys,
+		"gc_cycles":       memStats.NumGC,
+		"heap_objects":    memStats.HeapObjects,
 	})
+}
+
+// BusinessEventRecorder proporciona una interfaz para registrar eventos de negocio
+type BusinessEventRecorder struct {
+	metrics *metrics.PrometheusMetrics
+	logger  logger.Logger
+}
+
+// NewBusinessEventRecorder crea un nuevo registrador de eventos de negocio
+func NewBusinessEventRecorder(m *metrics.PrometheusMetrics, logger logger.Logger) *BusinessEventRecorder {
+	return &BusinessEventRecorder{
+		metrics: m,
+		logger:  logger,
+	}
+}
+
+// RecordEvent registra un evento de negocio
+func (r *BusinessEventRecorder) RecordEvent(eventType, tenantID string, data map[string]interface{}) {
+	r.metrics.RecordBusinessEvent(eventType, tenantID)
+	r.logger.LogBusinessEvent(context.Background(), eventType, map[string]interface{}{
+		"tenant_id": tenantID,
+		"data":      data,
+	})
+}
+
+// RecordUserLogin registra un login de usuario
+func (r *BusinessEventRecorder) RecordUserLogin(userID, tenantID string, successful bool) {
+	status := "success"
+	if !successful {
+		status = "failure"
+	}
 	
-	if _, exists := imc.histograms[key]; !exists {
-		imc.histograms[key] = make([]float64, 0)
-	}
-	imc.histograms[key] = append(imc.histograms[key], duration.Seconds())
-}
-
-// RecordHTTPStatus registra el status code de una response HTTP
-func (imc *InMemoryMetricsCollector) RecordHTTPStatus(method, path, status string) {
-	if !imc.config.EnableStatusMetrics {
-		return
-	}
-
-	imc.mutex.Lock()
-	defer imc.mutex.Unlock()
-
-	key := imc.buildMetricKey("http_responses_total", map[string]string{
-		"method": method,
-		"path":   path,
-		"status": status,
+	r.metrics.RecordBusinessEvent("user_login_"+status, tenantID)
+	r.logger.LogBusinessEvent(context.Background(), "user_login", map[string]interface{}{
+		"user_id":   userID,
+		"tenant_id": tenantID,
+		"success":   successful,
 	})
-	imc.counters[key]++
 }
 
-// RecordBusinessEvent registra un evento de negocio
-func (imc *InMemoryMetricsCollector) RecordBusinessEvent(eventType, tenantID string, metadata map[string]interface{}) {
-	if !imc.config.EnableBusinessMetrics {
-		return
-	}
-
-	imc.mutex.Lock()
-	defer imc.mutex.Unlock()
-
-	// Record counter
-	key := imc.buildMetricKey("business_events_total", map[string]string{
-		"event_type": eventType,
-		"tenant_id":  tenantID,
-	})
-	imc.counters[key]++
-
-	// Store event details
-	event := BusinessEvent{
-		Type:      eventType,
-		TenantID:  tenantID,
-		Timestamp: time.Now(),
-		Metadata:  metadata,
-	}
-	imc.businessEvents = append(imc.businessEvents, event)
-
-	// Keep only last 1000 events
-	if len(imc.businessEvents) > 1000 {
-		imc.businessEvents = imc.businessEvents[len(imc.businessEvents)-1000:]
-	}
-}
-
-// RecordCounter registra un contador
-func (imc *InMemoryMetricsCollector) RecordCounter(name string, labels map[string]string, value float64) {
-	imc.mutex.Lock()
-	defer imc.mutex.Unlock()
-
-	key := imc.buildMetricKey(name, labels)
-	imc.counters[key] += value
-}
-
-// RecordGauge registra un gauge
-func (imc *InMemoryMetricsCollector) RecordGauge(name string, labels map[string]string, value float64) {
-	imc.mutex.Lock()
-	defer imc.mutex.Unlock()
-
-	key := imc.buildMetricKey(name, labels)
-	imc.gauges[key] = value
-}
-
-// RecordHistogram registra un histograma
-func (imc *InMemoryMetricsCollector) RecordHistogram(name string, labels map[string]string, value float64) {
-	imc.mutex.Lock()
-	defer imc.mutex.Unlock()
-
-	key := imc.buildMetricKey(name, labels)
-	if _, exists := imc.histograms[key]; !exists {
-		imc.histograms[key] = make([]float64, 0)
-	}
-	imc.histograms[key] = append(imc.histograms[key], value)
-}
-
-// RecordError registra un error
-func (imc *InMemoryMetricsCollector) RecordError(errorType, tenantID, service string) {
-	imc.RecordCounter("errors_total", map[string]string{
-		"error_type": errorType,
-		"tenant_id":  tenantID,
-		"service":    service,
-	}, 1)
-}
-
-// RecordSecurityThreatDetected registra una amenaza de seguridad detectada
-func (imc *InMemoryMetricsCollector) RecordSecurityThreatDetected(threatType, severity, tenantID, userID string) {
-	imc.RecordCounter("security_threats_total", map[string]string{
-		"threat_type": threatType,
-		"severity":    severity,
+// RecordAPICall registra una llamada API específica
+func (r *BusinessEventRecorder) RecordAPICall(endpoint, method, tenantID string, duration time.Duration, statusCode int) {
+	r.metrics.RecordHTTPRequest(method, endpoint, string(rune(statusCode)), tenantID, duration.Seconds())
+	r.logger.LogBusinessEvent(context.Background(), "api_call", map[string]interface{}{
+		"endpoint":    endpoint,
+		"method":      method,
 		"tenant_id":   tenantID,
-		"user_id":     userID,
-	}, 1)
+		"duration_ms": duration.Milliseconds(),
+		"status_code": statusCode,
+	})
 }
 
-// RecordSecurityValidationFailed registra una validación de seguridad fallida
-func (imc *InMemoryMetricsCollector) RecordSecurityValidationFailed(validationType, tenantID, reason string) {
-	imc.RecordCounter("security_validation_failures_total", map[string]string{
-		"validation_type": validationType,
-		"tenant_id":       tenantID,
-		"reason":          reason,
-	}, 1)
+// DatabaseMetricsRecorder registra métricas específicas de base de datos
+type DatabaseMetricsRecorder struct {
+	metrics *metrics.PrometheusMetrics
+	logger  logger.Logger
 }
 
-// buildMetricKey construye una clave única para la métrica
-func (imc *InMemoryMetricsCollector) buildMetricKey(name string, labels map[string]string) string {
-	key := name
-	for k, v := range labels {
-		key += "_" + k + "_" + v
-	}
-	return key
-}
-
-// GetStats retorna todas las estadísticas
-func (imc *InMemoryMetricsCollector) GetStats() map[string]interface{} {
-	imc.mutex.RLock()
-	defer imc.mutex.RUnlock()
-
-	stats := map[string]interface{}{
-		"counters":         make(map[string]float64),
-		"gauges":           make(map[string]float64),
-		"histograms":       make(map[string]interface{}),
-		"business_events":  len(imc.businessEvents),
-	}
-
-	// Copy counters
-	for k, v := range imc.counters {
-		stats["counters"].(map[string]float64)[k] = v
-	}
-
-	// Copy gauges
-	for k, v := range imc.gauges {
-		stats["gauges"].(map[string]float64)[k] = v
-	}
-
-	// Process histograms
-	histogramStats := make(map[string]interface{})
-	for k, values := range imc.histograms {
-		if len(values) > 0 {
-			sum := 0.0
-			min := values[0]
-			max := values[0]
-			
-			for _, v := range values {
-				sum += v
-				if v < min {
-					min = v
-				}
-				if v > max {
-					max = v
-				}
-			}
-			
-			histogramStats[k] = map[string]interface{}{
-				"count": len(values),
-				"sum":   sum,
-				"avg":   sum / float64(len(values)),
-				"min":   min,
-				"max":   max,
-			}
-		}
-	}
-	stats["histograms"] = histogramStats
-
-	return stats
-}
-
-// MetricsMiddleware middleware para recolección de métricas
-func MetricsMiddleware(collector MetricsCollector, config *MetricsConfig) gin.HandlerFunc {
-	if config == nil {
-		config = DefaultMetricsConfig()
-	}
-
-	return func(c *gin.Context) {
-		// Skip metrics for certain paths
-		if shouldSkipPath(c.Request.URL.Path, config.SkipPaths) {
-			c.Next()
-			return
-		}
-
-		// Skip metrics for certain methods
-		if shouldSkipMethod(c.Request.Method, config.SkipMethods) {
-			c.Next()
-			return
-		}
-
-		start := time.Now()
-		path := c.Request.URL.Path
-		method := c.Request.Method
-
-		// Normalize path if enabled
-		if config.NormalizePaths {
-			path = normalizePath(path, config.PathPatterns)
-		}
-
-		// Get tenant ID
-		tenantID := c.GetHeader("X-Tenant-ID")
-		if tenantID == "" {
-			tenantID = "unknown"
-		}
-
-		// Process request
-		c.Next()
-
-		// Calculate duration
-		duration := time.Since(start)
-		status := strconv.Itoa(c.Writer.Status())
-
-		// Record metrics
-		if config.EnableRequestMetrics {
-			collector.RecordHTTPRequest(method, path, status, duration, tenantID)
-		}
-
-		if config.EnableDurationMetrics {
-			collector.RecordHTTPDuration(method, path, duration)
-		}
-
-		if config.EnableStatusMetrics {
-			collector.RecordHTTPStatus(method, path, status)
-		}
+// NewDatabaseMetricsRecorder crea un nuevo registrador de métricas de BD
+func NewDatabaseMetricsRecorder(m *metrics.PrometheusMetrics, logger logger.Logger) *DatabaseMetricsRecorder {
+	return &DatabaseMetricsRecorder{
+		metrics: m,
+		logger:  logger,
 	}
 }
 
-// BusinessMetricsMiddleware middleware para métricas de negocio
-func BusinessMetricsMiddleware(collector MetricsCollector, config *MetricsConfig) gin.HandlerFunc {
-	if config == nil {
-		config = DefaultMetricsConfig()
+// RecordQuery registra una query de base de datos
+func (r *DatabaseMetricsRecorder) RecordQuery(operation, table string, duration time.Duration, err error) {
+	status := "success"
+	if err != nil {
+		status = "error"
 	}
-
-	return func(c *gin.Context) {
-		c.Next()
-
-		// Record business-specific metrics based on endpoints
-		if config.EnableBusinessMetrics {
-			recordBusinessMetrics(c, collector, config)
-		}
-	}
-}
-
-// recordBusinessMetrics registra métricas específicas de negocio
-func recordBusinessMetrics(c *gin.Context, collector MetricsCollector, config *MetricsConfig) {
-	path := c.Request.URL.Path
-	method := c.Request.Method
-	status := c.Writer.Status()
-	tenantID := c.GetHeader("X-Tenant-ID")
-
-	if tenantID == "" {
-		tenantID = "unknown"
-	}
-
-	// Record metrics based on successful operations
-	if status >= 200 && status < 300 {
-		switch {
-		case method == "POST" && strings.Contains(path, "/bookings"):
-			collector.RecordBusinessEvent("booking_created", tenantID, map[string]interface{}{
-				"path":   path,
-				"method": method,
-			})
-		case method == "DELETE" && strings.Contains(path, "/bookings"):
-			collector.RecordBusinessEvent("booking_cancelled", tenantID, map[string]interface{}{
-				"path":   path,
-				"method": method,
-			})
-		case method == "POST" && strings.Contains(path, "/payments"):
-			collector.RecordBusinessEvent("payment_processed", tenantID, map[string]interface{}{
-				"path":   path,
-				"method": method,
-			})
-		case method == "POST" && strings.Contains(path, "/users"):
-			collector.RecordBusinessEvent("user_registered", tenantID, map[string]interface{}{
-				"path":   path,
-				"method": method,
-			})
-		case method == "POST" && strings.Contains(path, "/notifications"):
-			collector.RecordBusinessEvent("notification_sent", tenantID, map[string]interface{}{
-				"path":   path,
-				"method": method,
-			})
-		}
+	
+	r.metrics.RecordDBQuery(operation, table, status, duration.Seconds())
+	
+	if err != nil {
+		r.logger.LogError(context.Background(), err, "database_query_error", map[string]interface{}{
+			"operation": operation,
+			"table":     table,
+			"duration":  duration.Milliseconds(),
+		})
+	} else {
+		r.logger.LogBusinessEvent(context.Background(), "database_query", map[string]interface{}{
+			"operation": operation,
+			"table":     table,
+			"duration":  duration.Milliseconds(),
+		})
 	}
 }
 
-// Helper functions
-
-func shouldSkipPath(path string, skipPaths []string) bool {
-	for _, skipPath := range skipPaths {
-		if path == skipPath {
-			return true
-		}
-	}
-	return false
+// UpdateConnections actualiza las métricas de conexiones de BD
+func (r *DatabaseMetricsRecorder) UpdateConnections(active, idle, max int) {
+	r.metrics.SetDBConnections(active, idle, max)
+	r.logger.LogBusinessEvent(context.Background(), "database_connections_updated", map[string]interface{}{
+		"active": active,
+		"idle":   idle,
+		"max":    max,
+	})
 }
 
-func shouldSkipMethod(method string, skipMethods []string) bool {
-	for _, skipMethod := range skipMethods {
-		if method == skipMethod {
-			return true
-		}
-	}
-	return false
+// CacheMetricsRecorder registra métricas específicas de cache
+type CacheMetricsRecorder struct {
+	metrics *metrics.PrometheusMetrics
+	logger  logger.Logger
 }
 
-func normalizePath(path string, patterns map[string]string) string {
-	// Simple path normalization - in production, use proper regex
-	for pattern, _ := range patterns {
-		// This is a simplified implementation
-		// In production, you would use regexp.MustCompile(pattern).ReplaceAllString(path, replacement)
-		if strings.Contains(path, strings.Split(pattern, "/")[len(strings.Split(pattern, "/"))-2]) {
-			parts := strings.Split(path, "/")
-			if len(parts) >= 4 {
-				// Replace UUID-like patterns with {id}
-				for i, part := range parts {
-					if len(part) > 20 && (strings.Contains(part, "-") || len(part) == 36) {
-						parts[i] = "{id}"
-					}
-				}
-				return strings.Join(parts, "/")
-			}
-		}
-	}
-	return path
-}
-
-// MetricsHandler handler para exponer métricas
-func MetricsHandler(collector MetricsCollector) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Check if collector supports stats
-		if statsCollector, ok := collector.(*InMemoryMetricsCollector); ok {
-			stats := statsCollector.GetStats()
-			c.JSON(200, gin.H{
-				"metrics":   stats,
-				"timestamp": time.Now().Format(time.RFC3339),
-			})
-		} else {
-			c.JSON(200, gin.H{
-				"message":   "Metrics are being collected",
-				"timestamp": time.Now().Format(time.RFC3339),
-			})
-		}
+// NewCacheMetricsRecorder crea un nuevo registrador de métricas de cache
+func NewCacheMetricsRecorder(m *metrics.PrometheusMetrics, logger logger.Logger) *CacheMetricsRecorder {
+	return &CacheMetricsRecorder{
+		metrics: m,
+		logger:  logger,
 	}
 }
 
-// PrometheusExporter implementación para exportar a Prometheus
-// Esta sería una implementación más completa en producción
-type PrometheusExporter struct {
-	collector MetricsCollector
-	config    *MetricsConfig
-	logger    *logrus.Entry
+// RecordOperation registra una operación de cache
+func (r *CacheMetricsRecorder) RecordOperation(operation string, duration time.Duration, hit bool, err error) {
+	status := "success"
+	if err != nil {
+		status = "error"
+	} else if operation == "GET" && !hit {
+		status = "miss"
+	}
+	
+	r.metrics.RecordCacheOperation(operation, status, duration.Seconds())
+	
+	r.logger.LogBusinessEvent(context.Background(), "cache_operation", map[string]interface{}{
+		"operation": operation,
+		"status":    status,
+		"duration":  duration.Microseconds(),
+		"hit":       hit,
+		"error":     err != nil,
+	})
 }
 
-// NewPrometheusExporter crea un nuevo exportador de Prometheus
-func NewPrometheusExporter(collector MetricsCollector, config *MetricsConfig, logger *logrus.Logger) *PrometheusExporter {
-	return &PrometheusExporter{
-		collector: collector,
-		config:    config,
-		logger:    logger.WithField("component", "prometheus_exporter"),
-	}
-}
-
-// Handler retorna un handler para métricas de Prometheus
-func (pe *PrometheusExporter) Handler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// En una implementación real, esto generaría formato Prometheus
-		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		c.String(200, "# Prometheus metrics would be here\n# This is a placeholder implementation\n")
-	}
+// UpdateStats actualiza estadísticas generales del cache
+func (r *CacheMetricsRecorder) UpdateStats(hitRatio float64, totalKeys int) {
+	r.metrics.SetCacheHitRatio(hitRatio)
+	r.metrics.SetCacheKeysTotal(totalKeys)
+	
+	r.logger.LogBusinessEvent(context.Background(), "cache_stats_updated", map[string]interface{}{
+		"hit_ratio":   hitRatio,
+		"total_keys":  totalKeys,
+	})
 }

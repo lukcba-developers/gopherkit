@@ -5,7 +5,6 @@ import (
 	"encoding/base32"
 	"fmt"
 	"image/png"
-	"io"
 	"net/url"
 	"time"
 

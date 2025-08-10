@@ -21,12 +21,12 @@ type TestUser struct {
 func TestDefaultValidationConfig(t *testing.T) {
 	config := DefaultValidationConfig()
 
-	assert.Equal(t, 255, config.MaxStringLength)
-	assert.Equal(t, 320, config.MaxEmailLength)
+	assert.Equal(t, 500, config.MaxStringLength)
+	assert.Equal(t, 255, config.MaxEmailLength)
 	assert.Equal(t, 100, config.MaxNameLength)
 	assert.Equal(t, 128, config.MaxPasswordLength)
 	assert.Equal(t, 8, config.MinPasswordLength)
-	assert.Equal(t, 1000, config.MaxDescriptionLength)
+	assert.Equal(t, 2000, config.MaxDescriptionLength)
 	assert.True(t, config.EnableXSSProtection)
 	assert.True(t, config.EnableSQLInjection)
 	assert.True(t, config.EnableScriptCheck)
@@ -60,7 +60,7 @@ func TestNewUnifiedValidator(t *testing.T) {
 
 		assert.NotNil(t, validator)
 		assert.NotNil(t, validator.config)
-		assert.Equal(t, 255, validator.config.MaxStringLength)
+		assert.Equal(t, 500, validator.config.MaxStringLength)
 	})
 }
 
@@ -130,57 +130,64 @@ func TestValidateString(t *testing.T) {
 	t.Run("valid string", func(t *testing.T) {
 		result := validator.ValidateString("hello world", "test")
 		assert.True(t, result.IsValid)
-		assert.Empty(t, result.Issues)
+		assert.Empty(t, result.Errors)
 		assert.Equal(t, "test", result.Field)
 		assert.Equal(t, "hello world", result.Value)
 	})
 
 	t.Run("too long string", func(t *testing.T) {
-		longString := strings.Repeat("a", 300)
+		longString := strings.Repeat("a", 600)
 		result := validator.ValidateString(longString, "test")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "exceeds maximum length of 255")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "exceeds maximum length")
 	})
 
 	t.Run("invalid UTF-8", func(t *testing.T) {
 		invalidUTF8 := string([]byte{0xff, 0xfe, 0xfd})
 		result := validator.ValidateString(invalidUTF8, "test")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "contains invalid UTF-8 characters")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "contains invalid UTF-8 characters")
 	})
 
 	t.Run("XSS patterns", func(t *testing.T) {
 		xssString := "<script>alert('xss')</script>"
 		result := validator.ValidateString(xssString, "test")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "contains potential XSS patterns")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "contains potentially dangerous content")
 	})
 
 	t.Run("SQL injection patterns", func(t *testing.T) {
 		sqlString := "'; DROP TABLE users; --"
 		result := validator.ValidateString(sqlString, "test")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "contains potential SQL injection patterns")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "contains potentially dangerous content")
 	})
 
 	t.Run("script patterns", func(t *testing.T) {
 		scriptString := "javascript:alert('test')"
 		result := validator.ValidateString(scriptString, "test")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "contains potential script injection patterns")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "contains potentially dangerous content")
 	})
 
 	t.Run("path traversal patterns", func(t *testing.T) {
 		pathString := "../../../etc/passwd"
 		result := validator.ValidateString(pathString, "test")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "contains potential path traversal patterns")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "contains potentially dangerous content")
 	})
 
 	t.Run("with custom rules", func(t *testing.T) {
 		result := validator.ValidateString("hello world", "test", "no_spaces")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "failed rule: no_spaces")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "failed rule: no_spaces")
 
 		result = validator.ValidateString("helloworld", "test", "no_spaces")
 		assert.True(t, result.IsValid)
@@ -212,21 +219,22 @@ func TestValidateEmail(t *testing.T) {
 	t.Run("valid email", func(t *testing.T) {
 		result := validator.ValidateEmail("test@example.com")
 		assert.True(t, result.IsValid)
-		assert.Empty(t, result.Issues)
+		assert.Empty(t, result.Errors)
 		assert.Equal(t, "email", result.Field)
 	})
 
 	t.Run("empty email", func(t *testing.T) {
 		result := validator.ValidateEmail("")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "email is required")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "email is required")
 	})
 
 	t.Run("too long email", func(t *testing.T) {
 		longEmail := strings.Repeat("a", 310) + "@example.com"
 		result := validator.ValidateEmail(longEmail)
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "exceeds maximum length of 320")
+		assert.Contains(t, result.Errors, "exceeds maximum length of 320")
 	})
 
 	t.Run("invalid email format", func(t *testing.T) {
@@ -240,7 +248,7 @@ func TestValidateEmail(t *testing.T) {
 		for _, email := range testCases {
 			result := validator.ValidateEmail(email)
 			assert.False(t, result.IsValid, "Email %s should be invalid", email)
-			assert.Contains(t, result.Issues, "invalid email format")
+			assert.Contains(t, result.Errors, "invalid email format")
 		}
 	})
 
@@ -248,7 +256,7 @@ func TestValidateEmail(t *testing.T) {
 		suspiciousEmail := "test+<script>@example.com"
 		result := validator.ValidateEmail(suspiciousEmail)
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "contains suspicious patterns")
+		assert.Contains(t, result.Errors, "contains suspicious patterns")
 	})
 }
 
@@ -268,21 +276,22 @@ func TestValidateName(t *testing.T) {
 		for _, name := range validNames {
 			result := validator.ValidateName(name)
 			assert.True(t, result.IsValid, "Name %s should be valid", name)
-			assert.Empty(t, result.Issues)
+			assert.Empty(t, result.Errors)
 		}
 	})
 
 	t.Run("empty name", func(t *testing.T) {
 		result := validator.ValidateName("")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "name is required")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "name is required")
 	})
 
 	t.Run("too long name", func(t *testing.T) {
 		longName := strings.Repeat("a", 101)
 		result := validator.ValidateName(longName)
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "exceeds maximum length of 100")
+		assert.Contains(t, result.Errors, "exceeds maximum length of 100")
 	})
 
 	t.Run("invalid characters", func(t *testing.T) {
@@ -296,7 +305,7 @@ func TestValidateName(t *testing.T) {
 		for _, name := range invalidNames {
 			result := validator.ValidateName(name)
 			assert.False(t, result.IsValid, "Name %s should be invalid", name)
-			assert.Contains(t, result.Issues, "contains invalid characters for a name")
+			assert.Contains(t, result.Errors, "contains invalid characters for a name")
 		}
 	})
 
@@ -304,7 +313,8 @@ func TestValidateName(t *testing.T) {
 		xssName := "<script>alert('xss')</script>"
 		result := validator.ValidateName(xssName)
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "contains potential XSS patterns")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "contains potentially dangerous content")
 	})
 }
 
@@ -315,27 +325,27 @@ func TestValidatePassword(t *testing.T) {
 	t.Run("strong password", func(t *testing.T) {
 		result := validator.ValidatePassword("StrongP@ssw0rd!")
 		assert.True(t, result.IsValid)
-		assert.Empty(t, result.Issues)
+		assert.Empty(t, result.Errors)
 		assert.Equal(t, "[REDACTED]", result.Value) // Password should be redacted
 	})
 
 	t.Run("empty password", func(t *testing.T) {
 		result := validator.ValidatePassword("")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "password is required")
+		assert.Contains(t, result.Errors, "password is required")
 	})
 
 	t.Run("too short password", func(t *testing.T) {
 		result := validator.ValidatePassword("Sh0rt!")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "password must be at least 8 characters")
+		assert.Contains(t, result.Errors, "password must be at least 8 characters")
 	})
 
 	t.Run("too long password", func(t *testing.T) {
 		longPassword := strings.Repeat("A", 130) + "a1!"
 		result := validator.ValidatePassword(longPassword)
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "password cannot exceed 128 characters")
+		assert.Contains(t, result.Errors, "password cannot exceed 128 characters")
 	})
 
 	t.Run("weak passwords", func(t *testing.T) {
@@ -353,7 +363,7 @@ func TestValidatePassword(t *testing.T) {
 		for _, password := range weakPasswords {
 			result := validator.ValidatePassword(password)
 			assert.False(t, result.IsValid, "Password %s should be weak", password)
-			assert.Contains(t, result.Issues, "password does not meet strength requirements")
+			assert.Contains(t, result.Errors, "password does not meet strength requirements")
 		}
 	})
 }
@@ -372,14 +382,14 @@ func TestValidateUUID(t *testing.T) {
 		for _, uuid := range validUUIDs {
 			result := validator.ValidateUUID(uuid, "test_id")
 			assert.True(t, result.IsValid, "UUID %s should be valid", uuid)
-			assert.Empty(t, result.Issues)
+			assert.Empty(t, result.Errors)
 		}
 	})
 
 	t.Run("empty UUID", func(t *testing.T) {
 		result := validator.ValidateUUID("", "user_id")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "user_id is required")
+		assert.Contains(t, result.Errors, "user_id is required")
 	})
 
 	t.Run("invalid UUID format", func(t *testing.T) {
@@ -394,7 +404,7 @@ func TestValidateUUID(t *testing.T) {
 		for _, uuid := range invalidUUIDs {
 			result := validator.ValidateUUID(uuid, "test_id")
 			assert.False(t, result.IsValid, "UUID %s should be invalid", uuid)
-			assert.Contains(t, result.Issues, "invalid UUID format")
+			assert.Contains(t, result.Errors, "invalid UUID format")
 		}
 	})
 }
@@ -409,32 +419,32 @@ func TestValidateSport(t *testing.T) {
 		for _, sport := range validSports {
 			result := validator.ValidateSport(sport)
 			assert.True(t, result.IsValid, "Sport %s should be valid", sport)
-			assert.Empty(t, result.Issues)
+			assert.Empty(t, result.Errors)
 		}
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
 		result := validator.ValidateSport("TENNIS")
 		assert.True(t, result.IsValid)
-		assert.Empty(t, result.Issues)
+		assert.Empty(t, result.Errors)
 
 		result = validator.ValidateSport("Tennis")
 		assert.True(t, result.IsValid)
-		assert.Empty(t, result.Issues)
+		assert.Empty(t, result.Errors)
 	})
 
 	t.Run("empty sport", func(t *testing.T) {
 		result := validator.ValidateSport("")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "sport is required")
+		assert.Contains(t, result.Errors, "sport is required")
 	})
 
 	t.Run("invalid sport", func(t *testing.T) {
 		result := validator.ValidateSport("chess")
 		assert.False(t, result.IsValid)
-		assert.Len(t, result.Issues, 1)
-		assert.Contains(t, result.Issues[0], "sport 'chess' is not supported")
-		assert.Contains(t, result.Issues[0], "Allowed sports:")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "sport 'chess' is not supported")
+		assert.Contains(t, result.Errors[0].Message, "Allowed sports:")
 	})
 }
 
@@ -448,32 +458,33 @@ func TestValidateCurrency(t *testing.T) {
 		for _, currency := range validCurrencies {
 			result := validator.ValidateCurrency(currency)
 			assert.True(t, result.IsValid, "Currency %s should be valid", currency)
-			assert.Empty(t, result.Issues)
+			assert.Empty(t, result.Errors)
 		}
 	})
 
 	t.Run("case insensitive", func(t *testing.T) {
 		result := validator.ValidateCurrency("eur")
 		assert.True(t, result.IsValid)
-		assert.Empty(t, result.Issues)
+		assert.Empty(t, result.Errors)
 
 		result = validator.ValidateCurrency("Usd")
 		assert.True(t, result.IsValid)
-		assert.Empty(t, result.Issues)
+		assert.Empty(t, result.Errors)
 	})
 
 	t.Run("empty currency", func(t *testing.T) {
 		result := validator.ValidateCurrency("")
 		assert.False(t, result.IsValid)
-		assert.Contains(t, result.Issues, "currency is required")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "currency is required")
 	})
 
 	t.Run("invalid currency", func(t *testing.T) {
 		result := validator.ValidateCurrency("XYZ")
 		assert.False(t, result.IsValid)
-		assert.Len(t, result.Issues, 1)
-		assert.Contains(t, result.Issues[0], "currency 'XYZ' is not supported")
-		assert.Contains(t, result.Issues[0], "Allowed currencies:")
+		assert.Len(t, result.Errors, 1)
+		assert.Contains(t, result.Errors[0].Message, "currency 'XYZ' is not supported")
+		assert.Contains(t, result.Errors[0].Message, "Allowed currencies:")
 	})
 }
 
@@ -632,7 +643,7 @@ func TestHelperMethods(t *testing.T) {
 
 	t.Run("escapeHTML", func(t *testing.T) {
 		input := `<script>alert("test'ing")</script>`
-		expected := `&lt;script&gt;alert(&quot;test&#39;ing&quot;)&lt;/script&gt;`
+		expected := `&lt;script&gt;alert(&quot;test&#39;ing&quot;)&lt;&#x2F;script&gt;`
 		result := validator.escapeHTML(input)
 		assert.Equal(t, expected, result)
 	})

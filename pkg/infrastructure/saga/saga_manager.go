@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 )
 
 // SagaManager manages distributed transactions using the Saga pattern

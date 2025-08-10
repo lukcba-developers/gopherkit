@@ -2,127 +2,19 @@ package validation
 
 import (
 	"fmt"
+	"net/mail"
 	"regexp"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/sirupsen/logrus"
 )
 
-// UnifiedValidator validador unificado para todos los servicios
-type UnifiedValidator struct {
-	validator *validator.Validate
-	logger    *logrus.Entry
-	config    *ValidationConfig
-}
-
-// ValidationConfig configuración del validador
-type ValidationConfig struct {
-	// String limits
-	MaxStringLength     int
-	MaxEmailLength      int
-	MaxNameLength       int
-	MaxPasswordLength   int
-	MinPasswordLength   int
-	MaxDescriptionLength int
-	
-	// Security settings
-	EnableXSSProtection  bool
-	EnableSQLInjection   bool
-	EnableScriptCheck    bool
-	EnablePathTraversal  bool
-	
-	// File validation
-	AllowedFileTypes     []string
-	MaxFileSize          int64
-	MaxFileNameLength    int
-	
-	// Business rules
-	AllowedSports        []string
-	AllowedCurrencies    []string
-	AllowedCountries     []string
-	
-	// Advanced settings
-	EnableUnicodeNormalization bool
-	StrictMode                 bool
-	EnableCustomValidators     bool
-}
-
-// DefaultValidationConfig retorna configuración por defecto
-func DefaultValidationConfig() *ValidationConfig {
-	return &ValidationConfig{
-		MaxStringLength:      255,
-		MaxEmailLength:       320,
-		MaxNameLength:        100,
-		MaxPasswordLength:    128,
-		MinPasswordLength:    8,
-		MaxDescriptionLength: 1000,
-		EnableXSSProtection:  true,
-		EnableSQLInjection:   true,
-		EnableScriptCheck:    true,
-		EnablePathTraversal:  true,
-		AllowedFileTypes:     []string{"jpg", "jpeg", "png", "gif", "pdf", "doc", "docx"},
-		MaxFileSize:          10 * 1024 * 1024, // 10MB
-		MaxFileNameLength:    255,
-		AllowedSports:        []string{"tennis", "padel", "football", "basketball", "volleyball", "swimming", "golf", "running"},
-		AllowedCurrencies:    []string{"EUR", "USD", "GBP", "JPY"},
-		AllowedCountries:     []string{"ES", "US", "GB", "FR", "DE", "IT"},
-		EnableUnicodeNormalization: true,
-		StrictMode:                 false,
-		EnableCustomValidators:     true,
-	}
-}
-
-// NewUnifiedValidator crea un nuevo validador unificado
-func NewUnifiedValidator(config *ValidationConfig, logger *logrus.Entry) *UnifiedValidator {
-	if config == nil {
-		config = DefaultValidationConfig()
-	}
-
-	v := validator.New()
-	
-	validator := &UnifiedValidator{
-		validator: v,
-		logger:    logger,
-		config:    config,
-	}
-
-	// Register custom validators if enabled
-	if config.EnableCustomValidators {
-		validator.registerCustomValidators()
-	}
-
-	return validator
-}
-
-// ValidationResult resultado de validación
-type ValidationResult struct {
-	IsValid bool                    `json:"is_valid"`
-	Errors  []ValidationError       `json:"errors,omitempty"`
-	Field   string                  `json:"field,omitempty"`
-	Value   interface{}             `json:"value,omitempty"`
-	Issues  []string               `json:"issues,omitempty"`
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
-}
-
-// ValidationError error de validación
-type ValidationError struct {
-	Field    string      `json:"field"`
-	Value    interface{} `json:"value"`
-	Tag      string      `json:"tag"`
-	Message  string      `json:"message"`
-	Code     string      `json:"code"`
-	Severity string      `json:"severity"`
-}
-
-// ValidateStruct valida una estructura completa
+// ValidateStruct validates a complete struct
 func (v *UnifiedValidator) ValidateStruct(s interface{}) *ValidationResult {
 	result := &ValidationResult{
-		IsValid:  true,
-		Errors:   make([]ValidationError, 0),
-		Metadata: make(map[string]interface{}),
+		IsValid: true,
+		Errors:  make([]ValidationError, 0),
 	}
 
 	err := v.validator.Struct(s)
@@ -134,10 +26,9 @@ func (v *UnifiedValidator) ValidateStruct(s interface{}) *ValidationResult {
 			for _, fieldError := range validationErrors {
 				validationError := ValidationError{
 					Field:    fieldError.Field(),
-					Value:    fieldError.Value(),
-					Tag:      fieldError.Tag(),
-					Message:  v.getErrorMessage(fieldError),
+					Value:    fmt.Sprintf("%v", fieldError.Value()),
 					Code:     v.getErrorCode(fieldError),
+					Message:  v.getErrorMessage(fieldError),
 					Severity: v.getErrorSeverity(fieldError),
 				}
 				result.Errors = append(result.Errors, validationError)
@@ -157,526 +48,360 @@ func (v *UnifiedValidator) ValidateStruct(s interface{}) *ValidationResult {
 	return result
 }
 
-// ValidateString valida una cadena de texto
+// ValidateString validates a string value
 func (v *UnifiedValidator) ValidateString(value, fieldName string, rules ...string) *ValidationResult {
 	result := &ValidationResult{
 		Field:   fieldName,
 		Value:   value,
 		IsValid: true,
-		Issues:  make([]string, 0),
-		Metadata: make(map[string]interface{}),
+		Errors:  make([]ValidationError, 0),
 	}
 
 	// Basic validations
 	if len(value) > v.config.MaxStringLength {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("exceeds maximum length of %d", v.config.MaxStringLength))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    fieldName,
+			Value:    value,
+			Code:     "MAX_LENGTH_ERROR",
+			Message:  fmt.Sprintf("exceeds maximum length of %d", v.config.MaxStringLength),
+			Severity: "medium",
+		})
 	}
 
 	// UTF-8 validation
 	if !utf8.ValidString(value) {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "contains invalid UTF-8 characters")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    fieldName,
+			Value:    value,
+			Code:     "INVALID_UTF8_ERROR",
+			Message:  "contains invalid UTF-8 characters",
+			Severity: "high",
+		})
 	}
 
 	// Security validations
-	if v.config.EnableXSSProtection && v.containsXSSPatterns(value) {
+	if v.containsSuspiciousPatterns(value) {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "contains potential XSS patterns")
-	}
-
-	if v.config.EnableSQLInjection && v.containsSQLInjectionPatterns(value) {
-		result.IsValid = false
-		result.Issues = append(result.Issues, "contains potential SQL injection patterns")
-	}
-
-	if v.config.EnableScriptCheck && v.containsScriptPatterns(value) {
-		result.IsValid = false
-		result.Issues = append(result.Issues, "contains potential script injection patterns")
-	}
-
-	if v.config.EnablePathTraversal && v.containsPathTraversalPatterns(value) {
-		result.IsValid = false
-		result.Issues = append(result.Issues, "contains potential path traversal patterns")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    fieldName,
+			Value:    value,
+			Code:     "SECURITY_THREAT_ERROR",
+			Message:  "contains potentially dangerous content",
+			Severity: "high",
+		})
 	}
 
 	// Apply custom rules
 	for _, rule := range rules {
 		if !v.applyStringRule(value, rule) {
 			result.IsValid = false
-			result.Issues = append(result.Issues, fmt.Sprintf("failed rule: %s", rule))
+			result.Errors = append(result.Errors, ValidationError{
+				Field:    fieldName,
+				Value:    value,
+				Code:     "RULE_VIOLATION_ERROR",
+				Message:  fmt.Sprintf("failed rule: %s", rule),
+				Severity: "medium",
+			})
 		}
 	}
 
 	return result
 }
 
-// ValidateEmail valida una dirección de email
+// ValidateEmail validates an email address
 func (v *UnifiedValidator) ValidateEmail(email string) *ValidationResult {
 	result := &ValidationResult{
 		Field:   "email",
 		Value:   email,
 		IsValid: true,
-		Issues:  make([]string, 0),
+		Errors:  make([]ValidationError, 0),
 	}
 
 	// Basic checks
-	if email == "" {
+	if len(strings.TrimSpace(email)) == 0 {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "email is required")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "email",
+			Value:    email,
+			Code:     "REQUIRED_ERROR",
+			Message:  "email is required",
+			Severity: "medium",
+		})
 		return result
 	}
 
 	if len(email) > v.config.MaxEmailLength {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("exceeds maximum length of %d", v.config.MaxEmailLength))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "email",
+			Value:    email,
+			Code:     "MAX_LENGTH_ERROR",
+			Message:  fmt.Sprintf("email exceeds maximum length of %d", v.config.MaxEmailLength),
+			Severity: "medium",
+		})
 	}
 
-	// Email format validation
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(email) {
+	// Standard email validation
+	_, err := mail.ParseAddress(email)
+	if err != nil {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "invalid email format")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "email",
+			Value:    email,
+			Code:     "INVALID_FORMAT_ERROR",
+			Message:  "invalid email format",
+			Severity: "medium",
+		})
 	}
 
-	// Security checks
+	// Security validation
 	if v.containsSuspiciousPatterns(email) {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "contains suspicious patterns")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "email",
+			Value:    email,
+			Code:     "SECURITY_THREAT_ERROR",
+			Message:  "email contains suspicious patterns",
+			Severity: "high",
+		})
 	}
 
 	return result
 }
 
-// ValidateName valida un nombre de persona
+// ValidateName validates a name field
 func (v *UnifiedValidator) ValidateName(name string) *ValidationResult {
 	result := &ValidationResult{
 		Field:   "name",
 		Value:   name,
 		IsValid: true,
-		Issues:  make([]string, 0),
+		Errors:  make([]ValidationError, 0),
 	}
 
-	if name == "" {
+	name = strings.TrimSpace(name)
+
+	if len(name) == 0 {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "name is required")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "name",
+			Value:    name,
+			Code:     "REQUIRED_ERROR",
+			Message:  "name is required",
+			Severity: "medium",
+		})
 		return result
 	}
 
 	if len(name) > v.config.MaxNameLength {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("exceeds maximum length of %d", v.config.MaxNameLength))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "name",
+			Value:    name,
+			Code:     "MAX_LENGTH_ERROR",
+			Message:  fmt.Sprintf("name exceeds maximum length of %d", v.config.MaxNameLength),
+			Severity: "medium",
+		})
 	}
 
-	// Check for valid name characters
 	if !v.isValidName(name) {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "contains invalid characters for a name")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "name",
+			Value:    name,
+			Code:     "INVALID_FORMAT_ERROR",
+			Message:  "name contains invalid characters",
+			Severity: "medium",
+		})
 	}
 
-	// Security checks
-	if v.config.EnableXSSProtection && v.containsXSSPatterns(name) {
+	if v.containsSuspiciousPatterns(name) {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "contains potential XSS patterns")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "name",
+			Value:    name,
+			Code:     "SECURITY_THREAT_ERROR",
+			Message:  "name contains suspicious patterns",
+			Severity: "high",
+		})
 	}
 
 	return result
 }
 
-// ValidatePassword valida una contraseña
+// ValidatePassword validates a password
 func (v *UnifiedValidator) ValidatePassword(password string) *ValidationResult {
 	result := &ValidationResult{
 		Field:   "password",
-		Value:   "[REDACTED]", // Never expose password in results
+		Value:   "[REDACTED]", // Don't store actual password
 		IsValid: true,
-		Issues:  make([]string, 0),
-	}
-
-	if password == "" {
-		result.IsValid = false
-		result.Issues = append(result.Issues, "password is required")
-		return result
+		Errors:  make([]ValidationError, 0),
 	}
 
 	if len(password) < v.config.MinPasswordLength {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("password must be at least %d characters", v.config.MinPasswordLength))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "password",
+			Value:    "[REDACTED]",
+			Code:     "MIN_LENGTH_ERROR",
+			Message:  fmt.Sprintf("password must be at least %d characters", v.config.MinPasswordLength),
+			Severity: "medium",
+		})
 	}
 
 	if len(password) > v.config.MaxPasswordLength {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("password cannot exceed %d characters", v.config.MaxPasswordLength))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "password",
+			Value:    "[REDACTED]",
+			Code:     "MAX_LENGTH_ERROR",
+			Message:  fmt.Sprintf("password exceeds maximum length of %d", v.config.MaxPasswordLength),
+			Severity: "medium",
+		})
 	}
 
-	// Password strength check
 	if !v.isStrongPassword(password) {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "password does not meet strength requirements")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "password",
+			Value:    "[REDACTED]",
+			Code:     "WEAK_PASSWORD_ERROR",
+			Message:  "password must contain uppercase, lowercase, number and special character",
+			Severity: "high",
+		})
 	}
 
 	return result
 }
 
-// ValidateUUID valida un UUID
+// ValidateUUID validates a UUID string
 func (v *UnifiedValidator) ValidateUUID(uuid, fieldName string) *ValidationResult {
 	result := &ValidationResult{
 		Field:   fieldName,
 		Value:   uuid,
 		IsValid: true,
-		Issues:  make([]string, 0),
+		Errors:  make([]ValidationError, 0),
 	}
 
-	if uuid == "" {
+	if len(strings.TrimSpace(uuid)) == 0 {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("%s is required", fieldName))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    fieldName,
+			Value:    uuid,
+			Code:     "REQUIRED_ERROR",
+			Message:  "UUID is required",
+			Severity: "medium",
+		})
 		return result
 	}
 
-	uuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	if !uuidRegex.MatchString(strings.ToLower(uuid)) {
+	// UUID v4 pattern
+	uuidPattern := `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`
+	matched, err := regexp.MatchString(uuidPattern, uuid)
+	
+	if err != nil || !matched {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "invalid UUID format")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    fieldName,
+			Value:    uuid,
+			Code:     "INVALID_FORMAT_ERROR",
+			Message:  "invalid UUID format",
+			Severity: "medium",
+		})
 	}
 
 	return result
 }
 
-// ValidateSport valida un deporte
+// ValidateSport validates a sport name
 func (v *UnifiedValidator) ValidateSport(sport string) *ValidationResult {
 	result := &ValidationResult{
 		Field:   "sport",
 		Value:   sport,
 		IsValid: true,
-		Issues:  make([]string, 0),
+		Errors:  make([]ValidationError, 0),
 	}
 
-	if sport == "" {
+	sport = strings.TrimSpace(strings.ToLower(sport))
+
+	if len(sport) == 0 {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "sport is required")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "sport",
+			Value:    sport,
+			Code:     "REQUIRED_ERROR",
+			Message:  "sport is required",
+			Severity: "medium",
+		})
 		return result
 	}
 
-	sportLower := strings.ToLower(sport)
-	allowed := false
+	// Check against allowed sports
+	isValid := false
 	for _, allowedSport := range v.config.AllowedSports {
-		if sportLower == allowedSport {
-			allowed = true
+		if sport == strings.ToLower(allowedSport) {
+			isValid = true
 			break
 		}
 	}
 
-	if !allowed {
+	if !isValid {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("sport '%s' is not supported. Allowed sports: %v", sport, v.config.AllowedSports))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "sport",
+			Value:    sport,
+			Code:     "INVALID_VALUE_ERROR",
+			Message:  "sport is not supported",
+			Severity: "medium",
+		})
 	}
 
 	return result
 }
 
-// ValidateCurrency valida una moneda
+// ValidateCurrency validates a currency code
 func (v *UnifiedValidator) ValidateCurrency(currency string) *ValidationResult {
 	result := &ValidationResult{
 		Field:   "currency",
 		Value:   currency,
 		IsValid: true,
-		Issues:  make([]string, 0),
+		Errors:  make([]ValidationError, 0),
 	}
 
-	if currency == "" {
+	currency = strings.TrimSpace(strings.ToUpper(currency))
+
+	if len(currency) == 0 {
 		result.IsValid = false
-		result.Issues = append(result.Issues, "currency is required")
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "currency",
+			Value:    currency,
+			Code:     "REQUIRED_ERROR",
+			Message:  "currency is required",
+			Severity: "medium",
+		})
 		return result
 	}
 
-	currencyUpper := strings.ToUpper(currency)
-	allowed := false
+	// Check against allowed currencies
+	isValid := false
 	for _, allowedCurrency := range v.config.AllowedCurrencies {
-		if currencyUpper == allowedCurrency {
-			allowed = true
+		if currency == allowedCurrency {
+			isValid = true
 			break
 		}
 	}
 
-	if !allowed {
+	if !isValid {
 		result.IsValid = false
-		result.Issues = append(result.Issues, fmt.Sprintf("currency '%s' is not supported. Allowed currencies: %v", currency, v.config.AllowedCurrencies))
+		result.Errors = append(result.Errors, ValidationError{
+			Field:    "currency",
+			Value:    currency,
+			Code:     "INVALID_VALUE_ERROR",
+			Message:  "currency is not supported",
+			Severity: "medium",
+		})
 	}
 
 	return result
-}
-
-// SanitizeInput sanitiza una entrada removiendo caracteres peligrosos
-func (v *UnifiedValidator) SanitizeInput(input string) string {
-	// Remove null bytes
-	input = strings.ReplaceAll(input, "\x00", "")
-
-	// Remove or escape HTML tags
-	input = v.escapeHTML(input)
-
-	// Remove control characters except tab, newline, and carriage return
-	result := strings.Builder{}
-	for _, r := range input {
-		if unicode.IsControl(r) && r != '\t' && r != '\n' && r != '\r' {
-			continue
-		}
-		result.WriteRune(r)
-	}
-
-	return result.String()
-}
-
-// Helper methods
-
-func (v *UnifiedValidator) registerCustomValidators() {
-	// Register custom UUID validator
-	v.validator.RegisterValidation("uuid", func(fl validator.FieldLevel) bool {
-		uuidRegex := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-		return uuidRegex.MatchString(strings.ToLower(fl.Field().String()))
-	})
-
-	// Register custom sport validator
-	v.validator.RegisterValidation("sport", func(fl validator.FieldLevel) bool {
-		sport := strings.ToLower(fl.Field().String())
-		for _, allowedSport := range v.config.AllowedSports {
-			if sport == allowedSport {
-				return true
-			}
-		}
-		return false
-	})
-
-	// Register custom currency validator
-	v.validator.RegisterValidation("currency", func(fl validator.FieldLevel) bool {
-		currency := strings.ToUpper(fl.Field().String())
-		for _, allowedCurrency := range v.config.AllowedCurrencies {
-			if currency == allowedCurrency {
-				return true
-			}
-		}
-		return false
-	})
-
-	// Register strong password validator
-	v.validator.RegisterValidation("strong_password", func(fl validator.FieldLevel) bool {
-		return v.isStrongPassword(fl.Field().String())
-	})
-}
-
-func (v *UnifiedValidator) getErrorMessage(fe validator.FieldError) string {
-	switch fe.Tag() {
-	case "required":
-		return fmt.Sprintf("%s is required", fe.Field())
-	case "email":
-		return fmt.Sprintf("%s must be a valid email", fe.Field())
-	case "min":
-		return fmt.Sprintf("%s must be at least %s characters long", fe.Field(), fe.Param())
-	case "max":
-		return fmt.Sprintf("%s cannot be longer than %s characters", fe.Field(), fe.Param())
-	case "uuid":
-		return fmt.Sprintf("%s must be a valid UUID", fe.Field())
-	case "sport":
-		return fmt.Sprintf("%s must be a valid sport", fe.Field())
-	case "currency":
-		return fmt.Sprintf("%s must be a valid currency", fe.Field())
-	case "strong_password":
-		return fmt.Sprintf("%s must meet password strength requirements", fe.Field())
-	default:
-		return fmt.Sprintf("%s failed validation for %s", fe.Field(), fe.Tag())
-	}
-}
-
-func (v *UnifiedValidator) getErrorCode(fe validator.FieldError) string {
-	return fmt.Sprintf("VALIDATION_%s_%s", strings.ToUpper(fe.Field()), strings.ToUpper(fe.Tag()))
-}
-
-func (v *UnifiedValidator) getErrorSeverity(fe validator.FieldError) string {
-	securityTags := []string{"xss", "sql_injection", "script_injection", "path_traversal"}
-	for _, tag := range securityTags {
-		if fe.Tag() == tag {
-			return "high"
-		}
-	}
-	
-	if fe.Tag() == "required" {
-		return "medium"
-	}
-	
-	return "low"
-}
-
-func (v *UnifiedValidator) validateSecurity(s interface{}) *ValidationResult {
-	// This would perform deep security validation on the struct
-	// For now, return empty result
-	return &ValidationResult{
-		IsValid: true,
-		Errors:  make([]ValidationError, 0),
-	}
-}
-
-func (v *UnifiedValidator) applyStringRule(value, rule string) bool {
-	switch rule {
-	case "no_spaces":
-		return !strings.Contains(value, " ")
-	case "alphanumeric":
-		return v.isAlphanumeric(value)
-	case "alpha":
-		return v.isAlpha(value)
-	case "numeric":
-		return v.isNumeric(value)
-	default:
-		return true
-	}
-}
-
-func (v *UnifiedValidator) isValidName(name string) bool {
-	for _, r := range name {
-		if !unicode.IsLetter(r) && !unicode.IsSpace(r) && r != '-' && r != '\'' && r != '.' {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *UnifiedValidator) isStrongPassword(password string) bool {
-	if len(password) < 8 {
-		return false
-	}
-
-	hasUpper := false
-	hasLower := false
-	hasDigit := false
-	hasSpecial := false
-
-	for _, r := range password {
-		switch {
-		case unicode.IsUpper(r):
-			hasUpper = true
-		case unicode.IsLower(r):
-			hasLower = true
-		case unicode.IsDigit(r):
-			hasDigit = true
-		case unicode.IsPunct(r) || unicode.IsSymbol(r):
-			hasSpecial = true
-		}
-	}
-
-	return hasUpper && hasLower && hasDigit && hasSpecial
-}
-
-func (v *UnifiedValidator) isAlphanumeric(s string) bool {
-	for _, r := range s {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *UnifiedValidator) isAlpha(s string) bool {
-	for _, r := range s {
-		if !unicode.IsLetter(r) {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *UnifiedValidator) isNumeric(s string) bool {
-	for _, r := range s {
-		if !unicode.IsDigit(r) {
-			return false
-		}
-	}
-	return true
-}
-
-func (v *UnifiedValidator) containsXSSPatterns(s string) bool {
-	xssPatterns := []string{
-		"<script", "</script>", "<iframe", "</iframe>",
-		"<object", "</object>", "<embed", "</embed>",
-		"<form", "</form>", "<input", "<button",
-		"javascript:", "vbscript:", "data:",
-		"onload=", "onerror=", "onclick=", "onmouseover=", 
-		"document.cookie", "document.write", "innerHTML",
-		"eval(", "setTimeout(", "setInterval(",
-	}
-
-	sLower := strings.ToLower(s)
-	for _, pattern := range xssPatterns {
-		if strings.Contains(sLower, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-func (v *UnifiedValidator) containsSQLInjectionPatterns(s string) bool {
-	sqlPatterns := []string{
-		"' or '1'='1", "' or 1=1", "' or true",
-		"union select", "insert into", "delete from",
-		"update set", "drop table", "drop database",
-		"exec(", "execute(", "sp_", "xp_",
-		"--", "/*", "*/", "@@",
-		"char(", "nchar(", "varchar(", "nvarchar(",
-		"waitfor delay", "benchmark(", "sleep(",
-	}
-
-	sLower := strings.ToLower(s)
-	for _, pattern := range sqlPatterns {
-		if strings.Contains(sLower, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-func (v *UnifiedValidator) containsScriptPatterns(s string) bool {
-	scriptPatterns := []string{
-		"<script", "</script>", "javascript:", "vbscript:",
-		"<iframe", "<object", "<embed", "<form",
-		"eval(", "setTimeout(", "setInterval(",
-		"Function(", "constructor(", "prototype.",
-		"__proto__", "document.", "window.",
-		"location.", "history.", "navigator.",
-	}
-
-	sLower := strings.ToLower(s)
-	for _, pattern := range scriptPatterns {
-		if strings.Contains(sLower, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-func (v *UnifiedValidator) containsPathTraversalPatterns(s string) bool {
-	pathPatterns := []string{
-		"../", "..\\", "./", ".\\",
-		"%2e%2e", "%2e%2e%2f", "%2e%2e%5c",
-		"..%2f", "..%5c", "%252e%252e",
-	}
-
-	sLower := strings.ToLower(s)
-	for _, pattern := range pathPatterns {
-		if strings.Contains(sLower, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-func (v *UnifiedValidator) containsSuspiciousPatterns(s string) bool {
-	return v.containsXSSPatterns(s) || 
-		   v.containsSQLInjectionPatterns(s) || 
-		   v.containsScriptPatterns(s) || 
-		   v.containsPathTraversalPatterns(s)
-}
-
-func (v *UnifiedValidator) escapeHTML(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&quot;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
 }

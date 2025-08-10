@@ -221,7 +221,7 @@ func (dc *DefaultCompensator) CompensateStep(ctx context.Context, instance *Saga
 		return &SagaStepResult{
 			StepName: step.Name,
 			Success:  true,
-			Message:  "No compensation required",
+			Data:     map[string]interface{}{"message": "No compensation required"},
 		}, nil
 	}
 

@@ -1,0 +1,117 @@
+package main
+
+import (
+	"context"
+	"log"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/lukcba-developers/gopherkit/pkg/config"
+	"github.com/lukcba-developers/gopherkit/pkg/logger"
+	"github.com/lukcba-developers/gopherkit/pkg/server"
+	"github.com/lukcba-developers/gopherkit/pkg/database"
+	"github.com/lukcba-developers/gopherkit/pkg/cache"
+	"github.com/lukcba-developers/gopherkit/pkg/observability"
+)
+
+// {{.ServiceName}}Models represents the models for this service
+// Add your GORM models here
+var {{.ServiceName}}Models = []interface{}{
+	// &YourModel{},
+}
+
+func main() {
+	// Load configuration
+	cfg, err := config.LoadBaseConfig("{{.ServiceNameLower}}")
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Initialize logger
+	appLogger := logger.NewLogger("{{.ServiceNameLower}}")
+
+	// Initialize database
+	dbClient, err := database.NewPostgresClient(database.PostgresOptions{
+		Config: cfg.Database,
+		Logger: appLogger,
+		Models: {{.ServiceName}}Models,
+	})
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer dbClient.Close()
+
+	// Initialize cache (optional)
+	var cacheClient *cache.RedisClient
+	if cfg.Cache.Enabled {
+		cacheClient, err = cache.NewRedisClient(cache.RedisOptions{
+			Config: cfg.Cache,
+			Logger: appLogger,
+		})
+		if err != nil {
+			appLogger.LogError(context.Background(), err, "Failed to initialize cache", nil)
+			// Continue without cache
+		} else {
+			defer cacheClient.Close()
+		}
+	}
+
+	// Setup health checks
+	healthChecks := []observability.HealthCheck{
+		dbClient.HealthCheck(),
+	}
+	if cacheClient != nil {
+		healthChecks = append(healthChecks, cacheClient.HealthCheck())
+	}
+
+	// Create HTTP server with gopherkit
+	httpServer, err := server.NewHTTPServer(server.Options{
+		Config:       cfg,
+		Logger:       appLogger,
+		HealthChecks: healthChecks,
+		Routes:       setupRoutes(dbClient, cacheClient, appLogger),
+	})
+	if err != nil {
+		log.Fatalf("Failed to create HTTP server: %v", err)
+	}
+
+	// Start server
+	if err := httpServer.Start(); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
+
+	// Wait for shutdown signal
+	if err := httpServer.WaitForShutdown(); err != nil {
+		log.Fatalf("Server shutdown error: %v", err)
+	}
+
+	appLogger.LogBusinessEvent(context.Background(), "application_shutdown", nil)
+}
+
+// setupRoutes configures API routes
+func setupRoutes(db *database.PostgresClient, cache *cache.RedisClient, logger logger.Logger) func(*gin.Engine) {
+	return func(router *gin.Engine) {
+		// API routes
+		apiGroup := router.Group("/api/v1")
+		{
+			// Add your routes here
+			apiGroup.GET("/example", exampleHandler(db, logger))
+		}
+	}
+}
+
+// Example handler - replace with your business logic
+func exampleHandler(db *database.PostgresClient, logger logger.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ctx := c.Request.Context()
+		
+		logger.LogBusinessEvent(ctx, "example_request", map[string]interface{}{
+			"endpoint": c.FullPath(),
+		})
+
+		c.JSON(200, gin.H{
+			"message": "{{.ServiceName}} API is running",
+			"service": "{{.ServiceNameLower}}",
+		})
+	}
+}

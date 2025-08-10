@@ -6,9 +6,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
-	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/go-playground/validator/v10"
