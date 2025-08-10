@@ -86,6 +86,7 @@ func NewHTTPServer(opts Options) (*HTTPServer, error) {
 
 	// Initialize OpenTelemetry provider (optional)
 	var otelProvider *telemetry.OpenTelemetryProvider
+	var err error
 	if opts.EnableOpenTelemetry {
 		otelConfig := opts.OTelConfig
 		if otelConfig == nil {
@@ -248,11 +249,11 @@ func (s *HTTPServer) Start() error {
 	
 	// Start server in a goroutine
 	go func() {
-		s.logger.WithFields(map[string]interface{}{
+		s.logger.LogBusinessEvent(context.Background(), "server_starting", map[string]interface{}{
 			"port":        s.config.Server.Port,
 			"environment": s.config.Server.Environment,
 			"service":     s.config.Observability.ServiceName,
-		}).LogBusinessEvent(context.Background(), "server_starting", nil)
+		})
 
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			s.logger.LogError(context.Background(), err, "server failed to start", nil)

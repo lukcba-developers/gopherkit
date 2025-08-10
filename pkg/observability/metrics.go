@@ -95,19 +95,21 @@ func (mc *MetricsCollector) initialize() error {
 		"service":     mc.config.ServiceName,
 		"version":     mc.config.ServiceVersion,
 		"environment": mc.config.Environment,
-	}).LogBusinessEvent(context.Background(), "metrics_initialized", nil)
+		"event":       "metrics_initialized",
+	}).Info("Metrics collector initialized")
 
 	return nil
 }
 
 // createResource creates an OpenTelemetry resource
 func (mc *MetricsCollector) createResource() (*resource.Resource, error) {
-	return resource.NewWithAttributes(
+	res := resource.NewWithAttributes(
 		semconv.SchemaURL,
 		semconv.ServiceName(mc.config.ServiceName),
 		semconv.ServiceVersion(mc.config.ServiceVersion),
 		semconv.DeploymentEnvironment(mc.config.Environment),
 	)
+	return res, nil
 }
 
 // createMetrics creates all common metrics

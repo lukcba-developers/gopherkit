@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -52,12 +51,12 @@ func (m *MockServiceRegistry) DisableService(ctx context.Context, orgID, service
 	return args.Error(0)
 }
 
-func (m *MockServiceRegistry) GetTemplateInfo(templateType entity.TemplateType) *service.TemplateInfo {
-	args := m.Called(templateType)
+func (m *MockServiceRegistry) GetAvailableTemplates() []service.TemplateInfo {
+	args := m.Called()
 	if args.Get(0) == nil {
-		return nil
+		return []service.TemplateInfo{}
 	}
-	return args.Get(0).(*service.TemplateInfo)
+	return args.Get(0).([]service.TemplateInfo)
 }
 
 func setupOrganizationTemplateService() (*OrganizationTemplateService, *MockServiceRegistry) {
@@ -65,18 +64,33 @@ func setupOrganizationTemplateService() (*OrganizationTemplateService, *MockServ
 	logger := logrus.New()
 	logger.SetLevel(logrus.WarnLevel) // Reduce log noise in tests
 	
+	// Setup default templates for the mock
+	defaultTemplates := []service.TemplateInfo{
+		{
+			Type:        entity.TemplateTypeStartup,
+			Name:        "Startup Plan",
+			Description: "Basic startup plan",
+			Features:    []string{"feature1", "feature2"},
+			Price:       99.99,
+		},
+		{
+			Type:        entity.TemplateTypeEnterprise,
+			Name:        "Enterprise Plan", 
+			Description: "Full enterprise plan",
+			Features:    []string{"all_features"},
+			Price:       499.99,
+		},
+	}
+	mockRegistry.On("GetAvailableTemplates").Return(defaultTemplates).Maybe()
+	
 	service := NewOrganizationTemplateService(mockRegistry, logger)
 	return service, mockRegistry
 }
 
 func createValidOrganizationConfig() *entity.OrganizationConfig {
-	return &entity.OrganizationConfig{
-		OrganizationID: uuid.New().String(),
-		TemplateType:   entity.TemplateTypeStartup,
-		Customizations: make(map[string]interface{}),
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
-	}
+	// Use the proper constructor that applies template defaults
+	config := entity.NewOrganizationConfig(uuid.New().String(), entity.TemplateTypeStartup)
+	return config
 }
 
 func TestNewOrganizationTemplateService(t *testing.T) {
@@ -174,6 +188,7 @@ func TestCreateOrganizationRequest_Validation(t *testing.T) {
 
 func TestCreateOrganization_Success(t *testing.T) {
 	service, mockRegistry := setupOrganizationTemplateService()
+	defer mockRegistry.AssertExpectations(t)
 	ctx := context.Background()
 	
 	orgID := uuid.New().String()
@@ -195,17 +210,11 @@ func TestCreateOrganization_Success(t *testing.T) {
 	config.OrganizationID = orgID
 	config.TemplateType = templateType
 	
-	templateInfo := &service.TemplateInfo{
-		Name:        "Startup Template",
-		Description: "Template for startup organizations",
-		Features:    []string{"basic_analytics", "user_management"},
-	}
 	
 	// Mock expectations
 	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return((*entity.OrganizationConfig)(nil), nil)
 	mockRegistry.On("CreateOrganizationConfig", ctx, orgID, templateType).Return(config, nil)
 	mockRegistry.On("UpdateOrganizationConfig", ctx, mock.AnythingOfType("*entity.OrganizationConfig")).Return(nil)
-	mockRegistry.On("GetTemplateInfo", templateType).Return(templateInfo)
 	
 	// Execute
 	response, err := service.CreateOrganization(ctx, request)
@@ -216,7 +225,6 @@ func TestCreateOrganization_Success(t *testing.T) {
 	assert.Equal(t, config, response.OrganizationConfig)
 	assert.NotZero(t, response.MonthlyPrice)
 	assert.NotNil(t, response.EnabledServices)
-	assert.Equal(t, templateInfo, response.TemplateInfo)
 	assert.NotEmpty(t, response.OnboardingSteps)
 	
 	mockRegistry.AssertExpectations(t)
@@ -317,19 +325,12 @@ func TestUpdateOrganizationServices_Success(t *testing.T) {
 	config := createValidOrganizationConfig()
 	config.OrganizationID = orgID
 	
-	templateInfo := &service.TemplateInfo{
-		Name:        "Updated Template",
-		Description: "Updated template info",
-		Features:    []string{"analytics", "reports"},
-	}
-	
-	// Mock expectations
-	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return(config, nil)
+	// Mock expectations - UpdateOrganizationServices calls GetOrganizationConfig twice
+	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return(config, nil).Times(2)
 	mockRegistry.On("EnableService", ctx, orgID, "analytics").Return(nil)
 	mockRegistry.On("EnableService", ctx, orgID, "reports").Return(nil)
 	mockRegistry.On("DisableService", ctx, orgID, "beta_feature").Return(nil)
 	mockRegistry.On("UpdateOrganizationConfig", ctx, mock.AnythingOfType("*entity.OrganizationConfig")).Return(nil)
-	mockRegistry.On("GetTemplateInfo", config.TemplateType).Return(templateInfo)
 	
 	// Execute
 	response, err := service.UpdateOrganizationServices(ctx, request)
@@ -339,7 +340,6 @@ func TestUpdateOrganizationServices_Success(t *testing.T) {
 	assert.NotNil(t, response)
 	assert.Equal(t, config, response.OrganizationConfig)
 	assert.NotNil(t, response.EnabledServices)
-	assert.Equal(t, templateInfo, response.TemplateInfo)
 	
 	mockRegistry.AssertExpectations(t)
 }
@@ -406,15 +406,12 @@ func TestUpdateOrganizationServices_EnableServiceError(t *testing.T) {
 	config := createValidOrganizationConfig()
 	config.OrganizationID = orgID
 	
-	templateInfo := &service.TemplateInfo{
-		Name: "Test Template",
-	}
 	
 	// Mock expectations - service enabling fails but process continues
-	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return(config, nil)
+	// UpdateOrganizationServices calls GetOrganizationConfig twice
+	// Note: UpdateOrganizationConfig is not called because there are no customizations
+	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return(config, nil).Times(2)
 	mockRegistry.On("EnableService", ctx, orgID, "failing_service").Return(errors.New("service enable failed"))
-	mockRegistry.On("UpdateOrganizationConfig", ctx, mock.AnythingOfType("*entity.OrganizationConfig")).Return(nil)
-	mockRegistry.On("GetTemplateInfo", config.TemplateType).Return(templateInfo)
 	
 	// Execute - should not fail even if individual service enabling fails
 	response, err := service.UpdateOrganizationServices(ctx, request)
@@ -446,7 +443,6 @@ func TestOnboardingStep_Fields(t *testing.T) {
 
 func TestCreateOrganizationResponse_Fields(t *testing.T) {
 	config := createValidOrganizationConfig()
-	templateInfo := &service.TemplateInfo{Name: "Test Template"}
 	onboardingSteps := []OnboardingStep{
 		{StepID: "step_1", Title: "Step 1", Order: 1},
 	}
@@ -455,7 +451,6 @@ func TestCreateOrganizationResponse_Fields(t *testing.T) {
 		OrganizationConfig: config,
 		MonthlyPrice:       99.99,
 		EnabledServices:    []string{"analytics", "reports"},
-		TemplateInfo:       templateInfo,
 		OnboardingSteps:    onboardingSteps,
 	}
 	
@@ -464,7 +459,6 @@ func TestCreateOrganizationResponse_Fields(t *testing.T) {
 	assert.Len(t, response.EnabledServices, 2)
 	assert.Contains(t, response.EnabledServices, "analytics")
 	assert.Contains(t, response.EnabledServices, "reports")
-	assert.Equal(t, templateInfo, response.TemplateInfo)
 	assert.Len(t, response.OnboardingSteps, 1)
 }
 
@@ -516,17 +510,11 @@ func TestOrganizationTemplateService_Integration(t *testing.T) {
 	config.OrganizationID = orgID
 	config.TemplateType = entity.TemplateTypeEnterprise
 	
-	templateInfo := &service.TemplateInfo{
-		Name:        "Enterprise Template",
-		Description: "Full-featured enterprise template",
-		Features:    []string{"advanced_analytics", "multi_tenant", "sso"},
-	}
 	
 	// Mock para creación
 	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return((*entity.OrganizationConfig)(nil), nil).Once()
 	mockRegistry.On("CreateOrganizationConfig", ctx, orgID, entity.TemplateTypeEnterprise).Return(config, nil)
 	mockRegistry.On("UpdateOrganizationConfig", ctx, mock.AnythingOfType("*entity.OrganizationConfig")).Return(nil).Once()
-	mockRegistry.On("GetTemplateInfo", entity.TemplateTypeEnterprise).Return(templateInfo)
 	
 	// Crear organización
 	createResponse, err := service.CreateOrganization(ctx, createRequest)
@@ -542,13 +530,12 @@ func TestOrganizationTemplateService_Integration(t *testing.T) {
 		UpdatedByUserID:   adminID,
 	}
 	
-	// Mock para actualización
-	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return(config, nil).Once()
+	// Mock para actualización - UpdateOrganizationServices calls GetOrganizationConfig twice
+	mockRegistry.On("GetOrganizationConfig", ctx, orgID).Return(config, nil).Times(2)
 	mockRegistry.On("EnableService", ctx, orgID, "premium_support").Return(nil)
 	mockRegistry.On("EnableService", ctx, orgID, "advanced_reporting").Return(nil)
 	mockRegistry.On("DisableService", ctx, orgID, "basic_analytics").Return(nil)
-	mockRegistry.On("UpdateOrganizationConfig", ctx, mock.AnythingOfType("*entity.OrganizationConfig")).Return(nil).Once()
-	mockRegistry.On("GetTemplateInfo", entity.TemplateTypeEnterprise).Return(templateInfo)
+	mockRegistry.On("UpdateOrganizationConfig", ctx, mock.AnythingOfType("*entity.OrganizationConfig")).Return(nil)
 	
 	// Actualizar servicios
 	updateResponse, err := service.UpdateOrganizationServices(ctx, updateRequest)
@@ -565,7 +552,6 @@ func BenchmarkCreateOrganization(b *testing.B) {
 	ctx := context.Background()
 	
 	config := createValidOrganizationConfig()
-	templateInfo := &service.TemplateInfo{Name: "Benchmark Template"}
 	
 	request := CreateOrganizationRequest{
 		OrganizationID:   uuid.New().String(),
@@ -577,7 +563,6 @@ func BenchmarkCreateOrganization(b *testing.B) {
 	// Setup mocks for benchmark
 	mockRegistry.On("GetOrganizationConfig", ctx, mock.AnythingOfType("string")).Return((*entity.OrganizationConfig)(nil), nil)
 	mockRegistry.On("CreateOrganizationConfig", ctx, mock.AnythingOfType("string"), entity.TemplateTypeStartup).Return(config, nil)
-	mockRegistry.On("GetTemplateInfo", entity.TemplateTypeStartup).Return(templateInfo)
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -592,7 +577,6 @@ func BenchmarkUpdateOrganizationServices(b *testing.B) {
 	ctx := context.Background()
 	
 	config := createValidOrganizationConfig()
-	templateInfo := &service.TemplateInfo{Name: "Benchmark Template"}
 	
 	request := UpdateOrganizationServicesRequest{
 		OrganizationID:   uuid.New().String(),
@@ -604,7 +588,6 @@ func BenchmarkUpdateOrganizationServices(b *testing.B) {
 	mockRegistry.On("GetOrganizationConfig", ctx, mock.AnythingOfType("string")).Return(config, nil)
 	mockRegistry.On("EnableService", ctx, mock.AnythingOfType("string"), "service1").Return(nil)
 	mockRegistry.On("UpdateOrganizationConfig", ctx, mock.AnythingOfType("*entity.OrganizationConfig")).Return(nil)
-	mockRegistry.On("GetTemplateInfo", mock.AnythingOfType("entity.TemplateType")).Return(templateInfo)
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

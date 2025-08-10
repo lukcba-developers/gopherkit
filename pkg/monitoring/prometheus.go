@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -412,10 +413,10 @@ func (m *PrometheusMetrics) HTTPMiddleware() gin.HandlerFunc {
 		// Add trace information if available
 		if span := trace.SpanFromContext(c.Request.Context()); span.IsRecording() {
 			span.SetAttributes(
-				trace.StringAttribute("http.method", c.Request.Method),
-				trace.StringAttribute("http.path", path),
-				trace.IntAttribute("http.status_code", c.Writer.Status()),
-				trace.Float64Attribute("http.duration_seconds", duration.Seconds()),
+				attribute.String("http.method", c.Request.Method),
+				attribute.String("http.path", path),
+				attribute.Int("http.status_code", c.Writer.Status()),
+				attribute.Float64("http.duration_seconds", duration.Seconds()),
 			)
 		}
 	})

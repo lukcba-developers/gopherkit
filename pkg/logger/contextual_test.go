@@ -45,27 +45,27 @@ func TestContextualLogger_WithMethods(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		method func() *LogEntry
+		method func() LoggerEntry
 	}{
 		{
 			name:   "WithTenant",
-			method: func() *LogEntry { return logger.WithTenant("tenant123") },
+			method: func() LoggerEntry { return logger.WithTenant("tenant123") },
 		},
 		{
 			name:   "WithUser",
-			method: func() *LogEntry { return logger.WithUser("user456") },
+			method: func() LoggerEntry { return logger.WithUser("user456") },
 		},
 		{
 			name:   "WithCorrelation",
-			method: func() *LogEntry { return logger.WithCorrelation("corr789") },
+			method: func() LoggerEntry { return logger.WithCorrelation("corr789") },
 		},
 		{
 			name:   "WithOperation",
-			method: func() *LogEntry { return logger.WithOperation("test_op") },
+			method: func() LoggerEntry { return logger.WithOperation("test_op") },
 		},
 		{
 			name: "WithFields",
-			method: func() *LogEntry {
+			method: func() LoggerEntry {
 				return logger.WithFields(map[string]interface{}{
 					"key1": "value1",
 					"key2": 42,

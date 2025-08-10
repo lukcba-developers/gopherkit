@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/lukcba-developers/gopherkit/pkg/cache"
-	"github.com/lukcba-developers/gopherkit/pkg/errors"
 )
 
 // RateLimitStrategy define diferentes estrategias de rate limiting
@@ -60,7 +59,7 @@ type IntelligentRateLimitConfig struct {
 	AdaptiveConfig *AdaptiveConfig
 	
 	// Storage
-	CacheClient cache.Client
+	CacheClient cache.CacheInterface
 	CachePrefix string
 	
 	// Behavior
@@ -377,7 +376,7 @@ func (irl *IntelligentRateLimiter) checkTokenBucket(ctx context.Context, key str
 	}
 	
 	var bucket BucketState
-	err := irl.config.CacheClient.GetJSON(ctx, cacheKey, &bucket)
+	err := irl.config.CacheClient.Get(ctx, cacheKey, &bucket)
 	if err != nil {
 		// Initialize new bucket
 		bucket = BucketState{
@@ -402,7 +401,7 @@ func (irl *IntelligentRateLimiter) checkTokenBucket(ctx context.Context, key str
 	
 	// Update bucket state
 	expiration := window + time.Minute // Extra buffer
-	irl.config.CacheClient.SetJSON(ctx, cacheKey, bucket, expiration)
+	irl.config.CacheClient.Set(ctx, cacheKey, bucket, expiration)
 	
 	// Calculate reset time
 	var resetTime time.Time
@@ -433,10 +432,11 @@ func (irl *IntelligentRateLimiter) checkFixedWindow(ctx context.Context, key str
 	cacheKey := fmt.Sprintf("%sfw:%s:%d", irl.config.CachePrefix, key, windowStart.Unix())
 	
 	// Get current count
-	current, err := irl.config.CacheClient.Get(ctx, cacheKey)
+	var currentStr string
+	err := irl.config.CacheClient.Get(ctx, cacheKey, &currentStr)
 	count := 0
 	if err == nil {
-		count, _ = strconv.Atoi(current)
+		count, _ = strconv.Atoi(currentStr)
 	}
 	
 	// Check if limit exceeded
@@ -479,7 +479,8 @@ func (irl *IntelligentRateLimiter) checkSlidingWindow(ctx context.Context, key s
 		subWindowStart := windowStart.Add(time.Duration(i) * interval)
 		subKey := fmt.Sprintf("%s:%d", cacheKey, subWindowStart.Unix()/int64(interval.Seconds()))
 		
-		current, err := irl.config.CacheClient.Get(ctx, subKey)
+		var current string
+		err := irl.config.CacheClient.Get(ctx, subKey, &current)
 		if err == nil {
 			count, _ := strconv.Atoi(current)
 			totalCount += count
@@ -493,7 +494,8 @@ func (irl *IntelligentRateLimiter) checkSlidingWindow(ctx context.Context, key s
 	exceeded := totalCount >= limit
 	if !exceeded {
 		// Increment current sub-window
-		current, _ := irl.config.CacheClient.Get(ctx, currentSubKey)
+		var current string
+		irl.config.CacheClient.Get(ctx, currentSubKey, &current)
 		count := 1
 		if current != "" {
 			existing, _ := strconv.Atoi(current)

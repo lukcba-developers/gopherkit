@@ -5,33 +5,36 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/sirupsen/logrus"
 
+	"github.com/lukcba-developers/gopherkit/pkg/logger"
 	"github.com/lukcba-developers/gopherkit/pkg/middleware/circuitbreaker"
 	"github.com/lukcba-developers/gopherkit/pkg/middleware/cors"
 	"github.com/lukcba-developers/gopherkit/pkg/middleware/logging"
-	"github.com/lukcba-developers/gopherkit/pkg/middleware/metrics"
+	middlewaremetrics "github.com/lukcba-developers/gopherkit/pkg/middleware/metrics"
 	"github.com/lukcba-developers/gopherkit/pkg/middleware/ratelimit"
 	"github.com/lukcba-developers/gopherkit/pkg/middleware/recovery"
+	"github.com/lukcba-developers/gopherkit/pkg/metrics"
 )
 
-// MiddlewareStack configuración completa del stack de middlewares
+// MiddlewareStack configuración completa del stack de middlewares actualizado
 type MiddlewareStack struct {
 	// Core components
-	Logger          *logrus.Logger
-	RedisClient     *redis.Client
-	
-	// Configurations
-	CORSConfig           *cors.Config
-	LoggingConfig        *logging.LoggingConfig
-	MetricsConfig        *metrics.MetricsConfig
-	RateLimitConfig      *ratelimit.RateLimitConfig
-	CircuitBreakerConfig *circuitbreaker.CircuitBreakerConfig
-	RecoveryConfig       *recovery.RecoveryConfig
-	
-	// Components
-	MetricsCollector     metrics.MetricsCollector
-	CircuitBreakerMgr    *circuitbreaker.CircuitBreakerManager
+	Logger           *logrus.Logger
+	ContextualLogger logger.Logger
+	RedisClient      *redis.Client
+
+	// Configurations  
+	CORSConfig          *cors.Config
+	LoggingConfig       *logging.LoggingConfig
+	RateLimitConfig     *ratelimit.RateLimitConfig
+	CircuitBreakerConfig *circuitbreaker.Config
+	RecoveryConfig      *recovery.RecoveryConfig
+
+	// Components - updated to use real interfaces
+	PrometheusMetrics      *metrics.PrometheusMetrics
+	MetricsMiddleware      *middlewaremetrics.MetricsMiddleware
+	CircuitBreakerMgr      *circuitbreaker.CircuitBreakerManager
 	RecoveryStatsCollector *recovery.RecoveryStatsCollector
-	
+
 	// Settings
 	EnableCORS           bool
 	EnableLogging        bool
@@ -40,40 +43,40 @@ type MiddlewareStack struct {
 	EnableCircuitBreaker bool
 	EnableRecovery       bool
 	EnableTenantContext  bool
-	
+
 	// Environment
-	Environment          string // "development", "staging", "production"
-	ServiceName          string
-	ServiceVersion       string
+	Environment    string // "development", "staging", "production"
+	ServiceName    string
+	ServiceVersion string
 }
 
-// DefaultMiddlewareStack retorna configuración por defecto
-func DefaultMiddlewareStack(logger *logrus.Logger, serviceName string) *MiddlewareStack {
+// DefaultMiddlewareStack retorna configuración por defecto actualizada
+func DefaultMiddlewareStack(logrusLogger *logrus.Logger, serviceName, serviceVersion string) *MiddlewareStack {
 	return &MiddlewareStack{
-		Logger:                 logger,
-		CORSConfig:            cors.DefaultConfig(),
-		LoggingConfig:         logging.DefaultLoggingConfig(),
-		MetricsConfig:         metrics.DefaultMetricsConfig(),
-		RateLimitConfig:       ratelimit.DefaultRateLimitConfig(),
-		CircuitBreakerConfig:  circuitbreaker.DefaultCircuitBreakerConfig(),
-		RecoveryConfig:        recovery.DefaultRecoveryConfig(),
-		EnableCORS:            true,
-		EnableLogging:         true,
-		EnableMetrics:         true,
-		EnableRateLimit:       true,
-		EnableCircuitBreaker:  true,
-		EnableRecovery:        true,
-		EnableTenantContext:   true,
-		Environment:           "development",
-		ServiceName:           serviceName,
-		ServiceVersion:        "1.0.0",
+		Logger:               logrusLogger,
+		ContextualLogger:     logger.NewLogger(serviceName),
+		CORSConfig:           cors.DefaultConfig(),
+		LoggingConfig:        logging.DefaultLoggingConfig(),
+		RateLimitConfig:      ratelimit.DefaultRateLimitConfig(),
+		CircuitBreakerConfig: circuitbreaker.DefaultConfig(),
+		RecoveryConfig:       recovery.DefaultRecoveryConfig(),
+		EnableCORS:           true,
+		EnableLogging:        true,
+		EnableMetrics:        true,
+		EnableRateLimit:      true,
+		EnableCircuitBreaker: true,
+		EnableRecovery:       true,
+		EnableTenantContext:  true,
+		Environment:          "development",
+		ServiceName:          serviceName,
+		ServiceVersion:       serviceVersion,
 	}
 }
 
 // DevelopmentMiddlewareStack configuración para desarrollo
-func DevelopmentMiddlewareStack(logger *logrus.Logger, serviceName string) *MiddlewareStack {
-	stack := DefaultMiddlewareStack(logger, serviceName)
-	
+func DevelopmentMiddlewareStack(logrusLogger *logrus.Logger, serviceName, serviceVersion string) *MiddlewareStack {
+	stack := DefaultMiddlewareStack(logrusLogger, serviceName, serviceVersion)
+
 	// Development-specific settings
 	stack.Environment = "development"
 	stack.LoggingConfig.LogBody = true
@@ -82,14 +85,14 @@ func DevelopmentMiddlewareStack(logger *logrus.Logger, serviceName string) *Midd
 	stack.RecoveryConfig.EnableStackTrace = true
 	stack.CORSConfig.AllowAllOrigins = true
 	stack.RateLimitConfig.RequestsPerMinute = 1000 // More permissive for dev
-	
+
 	return stack
 }
 
 // ProductionMiddlewareStack configuración para producción
-func ProductionMiddlewareStack(logger *logrus.Logger, serviceName string) *MiddlewareStack {
-	stack := DefaultMiddlewareStack(logger, serviceName)
-	
+func ProductionMiddlewareStack(logrusLogger *logrus.Logger, serviceName, serviceVersion string) *MiddlewareStack {
+	stack := DefaultMiddlewareStack(logrusLogger, serviceName, serviceVersion)
+
 	// Production-specific settings
 	stack.Environment = "production"
 	stack.LoggingConfig.LogBody = false
@@ -98,47 +101,46 @@ func ProductionMiddlewareStack(logger *logrus.Logger, serviceName string) *Middl
 	stack.RecoveryConfig.EnableStackTrace = false
 	stack.CORSConfig.AllowAllOrigins = false
 	stack.RateLimitConfig.RequestsPerMinute = 100 // More restrictive for prod
-	
+
 	return stack
 }
 
 // Initialize inicializa todos los componentes del stack
 func (ms *MiddlewareStack) Initialize() error {
-	// Initialize metrics collector
+	// Initialize Prometheus metrics
 	if ms.EnableMetrics {
-		ms.MetricsCollector = metrics.NewInMemoryMetricsCollector(ms.MetricsConfig, ms.Logger)
+		ms.PrometheusMetrics = metrics.NewPrometheusMetrics(ms.ServiceName, ms.ServiceVersion)
+		ms.MetricsMiddleware = middlewaremetrics.NewMetricsMiddleware(ms.PrometheusMetrics, ms.ContextualLogger)
 	}
-	
+
 	// Initialize circuit breaker manager
 	if ms.EnableCircuitBreaker {
-		ms.CircuitBreakerMgr = circuitbreaker.NewCircuitBreakerManager(ms.Logger)
-		// Add default circuit breaker
-		ms.CircuitBreakerMgr.AddCircuitBreaker("default", ms.CircuitBreakerConfig)
+		ms.CircuitBreakerMgr = circuitbreaker.NewCircuitBreakerManager(ms.CircuitBreakerConfig)
 	}
-	
+
 	// Initialize recovery stats collector
 	if ms.EnableRecovery {
 		ms.RecoveryStatsCollector = recovery.NewRecoveryStatsCollector()
 	}
-	
+
 	// Configure rate limiting with Redis if available
 	if ms.EnableRateLimit && ms.RedisClient != nil {
 		ms.RateLimitConfig.UseRedis = true
 		ms.RateLimitConfig.RedisClient = ms.RedisClient
 	}
-	
+
 	ms.Logger.WithFields(logrus.Fields{
-		"service":     ms.ServiceName,
-		"version":     ms.ServiceVersion,
-		"environment": ms.Environment,
-		"cors":        ms.EnableCORS,
-		"logging":     ms.EnableLogging,
-		"metrics":     ms.EnableMetrics,
-		"rate_limit":  ms.EnableRateLimit,
+		"service":         ms.ServiceName,
+		"version":         ms.ServiceVersion,
+		"environment":     ms.Environment,
+		"cors":            ms.EnableCORS,
+		"logging":         ms.EnableLogging,
+		"metrics":         ms.EnableMetrics,
+		"rate_limit":      ms.EnableRateLimit,
 		"circuit_breaker": ms.EnableCircuitBreaker,
-		"recovery":    ms.EnableRecovery,
+		"recovery":        ms.EnableRecovery,
 	}).Info("Middleware stack initialized")
-	
+
 	return nil
 }
 
@@ -152,38 +154,41 @@ func (ms *MiddlewareStack) ApplyMiddlewares(router *gin.Engine) {
 			router.Use(recovery.RecoveryMiddleware(ms.Logger, ms.RecoveryConfig))
 		}
 	}
-	
+
 	// 2. CORS middleware
 	if ms.EnableCORS {
 		router.Use(cors.Middleware(ms.CORSConfig))
 	}
-	
+
 	// 3. Logging middleware (structured logging with correlation IDs)
 	if ms.EnableLogging {
 		router.Use(logging.LoggingMiddleware(ms.Logger, ms.LoggingConfig))
 		router.Use(logging.StructuredLoggerMiddleware(ms.Logger))
 	}
-	
+
 	// 4. Tenant context middleware (if enabled)
 	if ms.EnableTenantContext {
 		router.Use(TenantContextMiddleware(ms.Logger, false)) // Optional tenant by default
 	}
-	
+
 	// 5. Metrics middleware
-	if ms.EnableMetrics && ms.MetricsCollector != nil {
-		router.Use(metrics.MetricsMiddleware(ms.MetricsCollector, ms.MetricsConfig))
-		router.Use(metrics.BusinessMetricsMiddleware(ms.MetricsCollector, ms.MetricsConfig))
+	if ms.EnableMetrics && ms.MetricsMiddleware != nil {
+		router.Use(ms.MetricsMiddleware.GinMiddleware())
 	}
-	
+
 	// 6. Rate limiting middleware
 	if ms.EnableRateLimit {
 		rateLimiter := ratelimit.NewRateLimiter(ms.RateLimitConfig, ms.Logger)
 		router.Use(ratelimit.RateLimitMiddleware(rateLimiter, ms.RateLimitConfig))
 	}
-	
+
 	// 7. Circuit breaker middleware
 	if ms.EnableCircuitBreaker && ms.CircuitBreakerMgr != nil {
-		router.Use(circuitbreaker.MultiCircuitBreakerMiddleware(ms.CircuitBreakerMgr, "default"))
+		httpConfig := &circuitbreaker.HTTPConfig{
+			Name:          "default",
+			CircuitConfig: ms.CircuitBreakerConfig,
+		}
+		router.Use(circuitbreaker.HTTPMiddleware(httpConfig))
 	}
 }
 
@@ -191,13 +196,13 @@ func (ms *MiddlewareStack) ApplyMiddlewares(router *gin.Engine) {
 func (ms *MiddlewareStack) ApplySecurityMiddlewares(router *gin.Engine) {
 	// Security headers
 	router.Use(SecurityHeadersMiddleware())
-	
+
 	// Request validation middleware
 	router.Use(RequestValidationMiddleware(ms.Logger))
-	
+
 	// Security monitoring
-	if ms.EnableMetrics && ms.MetricsCollector != nil {
-		router.Use(SecurityMetricsMiddleware(ms.MetricsCollector))
+	if ms.EnableMetrics && ms.MetricsMiddleware != nil {
+		router.Use(SecurityMetricsMiddleware(ms.MetricsMiddleware))
 	}
 }
 
@@ -210,16 +215,15 @@ func (ms *MiddlewareStack) ApplyHealthCheckRoutes(router *gin.Engine) {
 		healthGroup.GET("/ready", ReadinessHandler(ms))
 		healthGroup.GET("/live", LivenessHandler(ms))
 	}
-	
+
 	// Metrics endpoint
-	if ms.EnableMetrics && ms.MetricsCollector != nil {
-		router.GET("/metrics", metrics.MetricsHandler(ms.MetricsCollector))
-		router.GET("/metrics/prometheus", metrics.NewPrometheusExporter(ms.MetricsCollector, ms.MetricsConfig, ms.Logger).Handler())
+	if ms.EnableMetrics && ms.PrometheusMetrics != nil {
+		router.GET("/metrics", gin.WrapH(ms.PrometheusMetrics.GetHandler()))
 	}
-	
+
 	// Circuit breaker status
 	if ms.EnableCircuitBreaker && ms.CircuitBreakerMgr != nil {
-		router.GET("/circuit-breakers", circuitbreaker.CircuitBreakerHealthHandler(ms.CircuitBreakerMgr))
+		router.GET("/circuit-breakers", CircuitBreakerHealthHandler(ms.CircuitBreakerMgr))
 	}
 }
 
@@ -282,31 +286,21 @@ func (ms *MiddlewareStack) GetStats() map[string]interface{} {
 			"tenant_context":  ms.EnableTenantContext,
 		},
 	}
-	
-	// Add component stats if available
-	if ms.EnableMetrics && ms.MetricsCollector != nil {
-		if inMemoryCollector, ok := ms.MetricsCollector.(*metrics.InMemoryMetricsCollector); ok {
-			stats["metrics"] = inMemoryCollector.GetStats()
-		}
-	}
-	
-	if ms.EnableCircuitBreaker && ms.CircuitBreakerMgr != nil {
-		stats["circuit_breakers"] = ms.CircuitBreakerMgr.GetAllStats()
-	}
-	
+
+	// Add recovery stats if available
 	if ms.EnableRecovery && ms.RecoveryStatsCollector != nil {
 		stats["recovery"] = ms.RecoveryStatsCollector.GetStats()
 	}
-	
+
 	return stats
 }
 
 // Shutdown limpia recursos del stack
 func (ms *MiddlewareStack) Shutdown() error {
 	ms.Logger.Info("Shutting down middleware stack")
-	
+
 	// Close any resources that need cleanup
 	// Redis client should be managed externally
-	
+
 	return nil
 }

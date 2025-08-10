@@ -372,7 +372,6 @@ func (rc *RedisClient) buildKey(key string) string {
 // Cache errors
 var (
 	ErrCacheDisabled = fmt.Errorf("cache is disabled")
-	ErrCacheMiss     = fmt.Errorf("cache miss")
 )
 
 // CacheService provides high-level caching operations

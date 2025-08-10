@@ -1,6 +1,7 @@
 package cqrs
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
@@ -140,7 +141,10 @@ type EventStream struct {
 	AggregateType string         `json:"aggregate_type"`
 	Events        []*StoredEvent `json:"events"`
 	Version       int            `json:"version"`
+	FromVersion   int            `json:"from_version"`
+	ToVersion     int            `json:"to_version"`
 	Timestamp     time.Time      `json:"timestamp"`
+	FromSnapshot  bool           `json:"from_snapshot"`
 }
 
 // GetEvents returns the events as Event interfaces
@@ -188,3 +192,21 @@ type Snapshot struct {
 	Timestamp     time.Time `gorm:"not null" json:"timestamp"`
 	CreatedAt     time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
+
+// EventStore interface defines the complete contract for event storage
+type EventStore interface {
+	// Event operations
+	AppendEvents(ctx context.Context, aggregateID, aggregateType string, expectedVersion int, events []Event) error
+	GetEventStream(ctx context.Context, aggregateID, aggregateType string, fromVersion int) (*EventStream, error)
+	GetEventsByTimeRange(ctx context.Context, start, end time.Time, limit int) ([]*StoredEvent, error)
+	GetEventsByType(ctx context.Context, eventType string, limit int, offset int) ([]*StoredEvent, error)
+	GetEventCount(ctx context.Context) (int64, error)
+	
+	// Aggregate operations  
+	GetAggregateVersion(ctx context.Context, aggregateID, aggregateType string) (int, error)
+	
+	// Snapshot operations
+	GetLatestSnapshot(ctx context.Context, aggregateID, aggregateType string) (*Snapshot, error)
+	CreateSnapshot(ctx context.Context, aggregateID, aggregateType string, version int, data interface{}) error
+}
+

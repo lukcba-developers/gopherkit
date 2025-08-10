@@ -9,6 +9,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 
 	"github.com/lukcba-developers/gopherkit/pkg/config"
 	"github.com/lukcba-developers/gopherkit/pkg/logger"
@@ -73,7 +74,7 @@ func (pc *PostgresClient) connect() error {
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: gormLogger,
-		NamingStrategy: gorm.NamingStrategy{
+		NamingStrategy: schema.NamingStrategy{
 			TablePrefix:   "",
 			SingularTable: false,
 		},

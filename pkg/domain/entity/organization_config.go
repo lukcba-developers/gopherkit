@@ -18,6 +18,10 @@ const (
 	TEMPLATE_FOOTBALL_CLUB TemplateType = "FOOTBALL_CLUB"
 	TEMPLATE_GYM_FITNESS   TemplateType = "GYM_FITNESS"
 	TEMPLATE_CUSTOM        TemplateType = "CUSTOM"
+	
+	// Alias for backwards compatibility
+	TemplateTypeStartup    = TEMPLATE_PADEL_ONLY
+	TemplateTypeEnterprise = TEMPLATE_CUSTOM
 )
 
 // OrganizationConfig represents the configuration for an organization

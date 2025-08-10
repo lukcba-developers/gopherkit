@@ -9,10 +9,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/sirupsen/logrus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/lukcba-developers/gopherkit/pkg/errors"
 	"github.com/lukcba-developers/gopherkit/pkg/cache"
@@ -44,7 +42,7 @@ type JWTConfig struct {
 	AllowedIssuers  []string
 	
 	// Cache configuration for token blacklist/validation
-	CacheClient cache.Client
+	CacheClient cache.CacheInterface
 	CachePrefix string
 	CacheTTL    time.Duration
 	
@@ -288,13 +286,14 @@ func isBlacklisted(ctx context.Context, sessionID string, config *JWTConfig) boo
 	}
 	
 	key := fmt.Sprintf("%sblacklist:%s", config.CachePrefix, sessionID)
-	exists, err := config.CacheClient.Exists(ctx, key)
+	var dummy string
+	err := config.CacheClient.Get(ctx, key, &dummy)
 	if err != nil {
-		logrus.WithError(err).Warn("Failed to check token blacklist")
+		// If error (key not found), token is not blacklisted
 		return false
 	}
 	
-	return exists
+	return true
 }
 
 // shouldSkipPath verifica si la ruta debe omitir autenticación

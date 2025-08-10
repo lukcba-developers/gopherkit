@@ -62,8 +62,8 @@ func (m *OpenTelemetryMiddleware) TracingMiddleware() gin.HandlerFunc {
 			semconv.HTTPURL(c.Request.URL.String()),
 			semconv.HTTPRoute(c.FullPath()),
 			semconv.HTTPScheme(c.Request.URL.Scheme),
-			semconv.HTTPHost(c.Request.Host),
-			semconv.HTTPUserAgent(c.Request.UserAgent()),
+			attribute.String("http.host", c.Request.Host),
+			attribute.String("http.user_agent", c.Request.UserAgent()),
 			semconv.HTTPRequestContentLength(int(c.Request.ContentLength)),
 			attribute.String("service.name", m.serviceName),
 		)
@@ -195,8 +195,8 @@ func (w *DatabaseTracingWrapper) TraceQuery(ctx gin.Context, operation, table, q
 	
 	// Añadir atributos al span
 	span.SetAttributes(
-		semconv.DBSystem("postgresql"),
-		semconv.DBOperation(operation),
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", operation),
 		semconv.DBSQLTable(table),
 		attribute.String("db.query", query),
 		attribute.String("db.connection_string", "postgresql://***:***@localhost/db"),
@@ -264,7 +264,7 @@ func (w *CacheTracingWrapper) TraceOperation(ctx gin.Context, operation, key str
 	
 	// Añadir atributos al span
 	span.SetAttributes(
-		semconv.DBSystem("redis"),
+		attribute.String("db.system", "redis"),
 		attribute.String("cache.operation", operation),
 		attribute.String("cache.key", key),
 	)

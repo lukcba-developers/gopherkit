@@ -88,13 +88,7 @@ type ProjectionState struct {
 	LastError    string    `json:"last_error,omitempty"`
 }
 
-// EventStore interface for accessing events (matches the event store implementation)
-type EventStore interface {
-	GetEventStream(ctx context.Context, aggregateID, aggregateType string, fromVersion int) (*EventStream, error)
-	GetEventsByTimeRange(ctx context.Context, start, end time.Time, limit int) ([]*StoredEvent, error)
-	GetEventsByType(ctx context.Context, eventType string, limit int, offset int) ([]*StoredEvent, error)
-	GetEventCount(ctx context.Context) (int64, error)
-}
+// EventStore interface is now defined in types.go
 
 // NewProjectionManager creates a new projection manager
 func NewProjectionManager(eventStore EventStore, readStore *ReadModelStore, config ProjectionConfig, logger *logrus.Logger) *ProjectionManager {

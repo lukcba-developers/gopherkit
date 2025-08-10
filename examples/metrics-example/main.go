@@ -71,11 +71,9 @@ func main() {
 		}
 	}
 
-	// Inicializar JWT middleware
-	jwtMiddleware, err := auth.NewJWTMiddleware(cfg.Security.JWT, appLogger)
-	if err != nil {
-		log.Fatalf("Failed to initialize JWT middleware: %v", err)
-	}
+	// Configurar JWT middleware
+	jwtConfig := auth.DefaultJWTConfig(cfg.Security.JWT.Secret)
+	jwtConfig.SkipPaths = []string{"/health", "/metrics", "/api/v1/auth/test"}
 
 	// Configurar health checks
 	healthChecks := []observability.HealthCheck{
@@ -90,7 +88,7 @@ func main() {
 		Config:       cfg,
 		Logger:       appLogger,
 		HealthChecks: healthChecks,
-		Routes:       setupExampleRoutes(appLogger, jwtMiddleware, dbClient, cacheClient),
+		Routes:       setupExampleRoutes(appLogger, jwtConfig, dbClient, cacheClient),
 	})
 	if err != nil {
 		log.Fatalf("Failed to create HTTP server: %v", err)
@@ -118,7 +116,7 @@ func main() {
 
 func setupExampleRoutes(
 	logger logger.Logger,
-	jwtMiddleware *auth.JWTMiddleware,
+	jwtConfig *auth.JWTConfig,
 	dbClient *database.PostgresClient,
 	cacheClient *cache.RedisClient,
 ) func(*gin.Engine) {
@@ -151,7 +149,7 @@ func setupExampleRoutes(
 
 			// Rutas protegidas
 			protected := v1.Group("")
-			protected.Use(jwtMiddleware.RequireAuth())
+			protected.Use(auth.JWTMiddleware(jwtConfig))
 			{
 				// CRUD de ejemplos con métricas detalladas
 				examples := protected.Group("/examples")
@@ -183,7 +181,7 @@ func setupExampleRoutes(
 						}
 
 						dbStart := time.Now()
-						if err := dbClient.DB().WithContext(c.Request.Context()).Create(model).Error; err != nil {
+						if err := dbClient.GetDB().WithContext(c.Request.Context()).Create(model).Error; err != nil {
 							dbDuration := time.Since(dbStart)
 							dbRecorder.RecordQuery("INSERT", "examples", dbDuration, err)
 							businessRecorder.RecordEvent("create_error", tenantID, map[string]interface{}{
@@ -230,7 +228,7 @@ func setupExampleRoutes(
 						
 						if cacheClient != nil && cacheRecorder != nil {
 							cacheStart := time.Now()
-							cacheKey := "examples:" + tenantID + ":" + strconv.Itoa(page)
+							_ = "examples:" + tenantID + ":" + strconv.Itoa(page) // Cache key for future use
 							
 							// Simular cache miss/hit
 							if time.Now().Unix()%3 == 0 { // Simular hit ratio del 66%
@@ -247,7 +245,7 @@ func setupExampleRoutes(
 						if !fromCache {
 							// Consultar base de datos
 							dbStart := time.Now()
-							err := dbClient.DB().WithContext(c.Request.Context()).
+							err := dbClient.GetDB().WithContext(c.Request.Context()).
 								Where("tenant_id = ?", tenantID).
 								Limit(limit).Offset(offset).
 								Find(&examples).Error
@@ -297,7 +295,7 @@ func setupExampleRoutes(
 						var example ExampleModel
 
 						dbStart := time.Now()
-						err := dbClient.DB().WithContext(c.Request.Context()).
+						err := dbClient.GetDB().WithContext(c.Request.Context()).
 							Where("id = ? AND tenant_id = ?", id, tenantID).
 							First(&example).Error
 

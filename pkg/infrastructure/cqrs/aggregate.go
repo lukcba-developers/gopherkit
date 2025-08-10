@@ -23,7 +23,7 @@ type Aggregate interface {
 
 // AggregateRepository handles aggregate persistence and retrieval
 type AggregateRepository struct {
-	eventStore *EventStore
+	eventStore EventStore
 	logger     *logrus.Logger
 	config     AggregateConfig
 }
@@ -126,7 +126,7 @@ func (ba *BaseAggregate) createDomainEvent(storedEvent *StoredEvent) (Event, err
 }
 
 // NewAggregateRepository creates a new aggregate repository
-func NewAggregateRepository(eventStore *EventStore, config AggregateConfig, logger *logrus.Logger) *AggregateRepository {
+func NewAggregateRepository(eventStore EventStore, config AggregateConfig, logger *logrus.Logger) *AggregateRepository {
 	// Set default config values
 	if config.SnapshotFrequency == 0 {
 		config.SnapshotFrequency = 100

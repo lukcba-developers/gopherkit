@@ -221,7 +221,7 @@ func LoadBaseConfig(serviceName string) (*BaseConfig, error) {
 	}
 
 	if err := ValidateConfig(config); err != nil {
-		return nil, errors.NewValidationError("configuration validation failed", err)
+		return nil, errors.NewValidationError("configuration validation failed", "config", err.Error())
 	}
 
 	return config, nil

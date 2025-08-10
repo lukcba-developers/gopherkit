@@ -20,6 +20,23 @@ type LogEntry struct {
 	*logrus.Entry
 }
 
+// Implement LoggerEntry interface methods for LogEntry
+func (e *LogEntry) WithContext(ctx context.Context) LoggerEntry {
+	return &LogEntry{Entry: e.Entry.WithContext(ctx)}
+}
+
+func (e *LogEntry) WithField(key string, value interface{}) LoggerEntry {
+	return &LogEntry{Entry: e.Entry.WithField(key, value)}
+}
+
+func (e *LogEntry) WithFields(fields map[string]interface{}) LoggerEntry {
+	return &LogEntry{Entry: e.Entry.WithFields(logrus.Fields(fields))}
+}
+
+func (e *LogEntry) WithError(err error) LoggerEntry {
+	return &LogEntry{Entry: e.Entry.WithError(err)}
+}
+
 // New creates a new contextual logger
 func New(serviceName string) *ContextualLogger {
 	logger := logrus.New()
@@ -59,7 +76,7 @@ func New(serviceName string) *ContextualLogger {
 }
 
 // WithContext creates a log entry with context information
-func (l *ContextualLogger) WithContext(ctx context.Context) *LogEntry {
+func (l *ContextualLogger) WithContext(ctx context.Context) LoggerEntry {
 	entry := l.Logger.WithContext(ctx)
 	
 	// Add tenant ID if available
@@ -94,32 +111,32 @@ func (l *ContextualLogger) WithContext(ctx context.Context) *LogEntry {
 }
 
 // WithTenant creates a log entry with tenant information
-func (l *ContextualLogger) WithTenant(tenantID string) *LogEntry {
+func (l *ContextualLogger) WithTenant(tenantID string) LoggerEntry {
 	return &LogEntry{Entry: l.Logger.WithField("tenant_id", tenantID)}
 }
 
 // WithUser creates a log entry with user information
-func (l *ContextualLogger) WithUser(userID string) *LogEntry {
+func (l *ContextualLogger) WithUser(userID string) LoggerEntry {
 	return &LogEntry{Entry: l.Logger.WithField("user_id", userID)}
 }
 
 // WithCorrelation creates a log entry with correlation ID
-func (l *ContextualLogger) WithCorrelation(correlationID string) *LogEntry {
+func (l *ContextualLogger) WithCorrelation(correlationID string) LoggerEntry {
 	return &LogEntry{Entry: l.Logger.WithField("correlation_id", correlationID)}
 }
 
 // WithOperation creates a log entry with operation information
-func (l *ContextualLogger) WithOperation(operation string) *LogEntry {
+func (l *ContextualLogger) WithOperation(operation string) LoggerEntry {
 	return &LogEntry{Entry: l.Logger.WithField("operation", operation)}
 }
 
 // WithFields creates a log entry with multiple fields
-func (l *ContextualLogger) WithFields(fields map[string]interface{}) *LogEntry {
+func (l *ContextualLogger) WithFields(fields map[string]interface{}) LoggerEntry {
 	return &LogEntry{Entry: l.Logger.WithFields(logrus.Fields(fields))}
 }
 
 // WithError creates a log entry with error information
-func (l *ContextualLogger) WithError(err error) *LogEntry {
+func (l *ContextualLogger) WithError(err error) LoggerEntry {
 	return &LogEntry{Entry: l.Logger.WithError(err)}
 }
 

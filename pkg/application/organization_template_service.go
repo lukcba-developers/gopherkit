@@ -15,12 +15,12 @@ import (
 
 // OrganizationTemplateService handles organization template operations
 type OrganizationTemplateService struct {
-	serviceRegistry *service.ServiceRegistry
+	serviceRegistry service.ServiceRegistryInterface
 	logger          *logrus.Logger
 }
 
 // NewOrganizationTemplateService creates a new organization template service
-func NewOrganizationTemplateService(serviceRegistry *service.ServiceRegistry, logger *logrus.Logger) *OrganizationTemplateService {
+func NewOrganizationTemplateService(serviceRegistry service.ServiceRegistryInterface, logger *logrus.Logger) *OrganizationTemplateService {
 	return &OrganizationTemplateService{
 		serviceRegistry: serviceRegistry,
 		logger:          logger,
@@ -327,6 +327,10 @@ func (ots *OrganizationTemplateService) validateCreateRequest(req CreateOrganiza
 
 	if req.OrganizationName == "" {
 		return errors.New("organization_name is required")
+	}
+
+	if len(req.OrganizationName) < 3 {
+		return errors.New("organization_name must be at least 3 characters long")
 	}
 
 	validTemplates := []entity.TemplateType{

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 	"github.com/sirupsen/logrus"
@@ -78,7 +79,7 @@ func (h *PostgresTestHelper) Start(ctx context.Context) error {
 		},
 		WaitingFor: wait.ForAll(
 			wait.ForLog("database system is ready to accept connections"),
-			wait.ForListeningPort(h.config.Port),
+			wait.ForListeningPort(nat.Port(h.config.Port)),
 		).WithDeadline(2 * time.Minute),
 	}
 	
@@ -148,7 +149,7 @@ func (h *PostgresTestHelper) GetConnectionString(ctx context.Context) (string, e
 		return "", err
 	}
 	
-	port, err := h.container.MappedPort(ctx, h.config.Port)
+	port, err := h.container.MappedPort(ctx, nat.Port(h.config.Port))
 	if err != nil {
 		return "", err
 	}

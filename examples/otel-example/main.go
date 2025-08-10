@@ -90,11 +90,9 @@ func main() {
 		}
 	}
 
-	// Inicializar JWT middleware
-	jwtMiddleware, err := auth.NewJWTMiddleware(cfg.Security.JWT, appLogger)
-	if err != nil {
-		log.Fatalf("Failed to initialize JWT middleware: %v", err)
-	}
+	// Configurar JWT middleware
+	jwtConfig := auth.DefaultJWTConfig(cfg.Security.JWT.Secret)
+	jwtConfig.SkipPaths = []string{"/health", "/metrics", "/api/v1/auth/test"}
 
 	// Configurar health checks
 	healthChecks := []observability.HealthCheck{
@@ -109,7 +107,7 @@ func main() {
 		Config:              cfg,
 		Logger:              appLogger,
 		HealthChecks:        healthChecks,
-		Routes:              setupTracedRoutes(appLogger, jwtMiddleware, dbClient, cacheClient),
+		Routes:              setupTracedRoutes(appLogger, jwtConfig, dbClient, cacheClient),
 		EnableOpenTelemetry: true,
 		OTelConfig:          otelConfig,
 	})
@@ -140,7 +138,7 @@ func main() {
 
 func setupTracedRoutes(
 	logger logger.Logger,
-	jwtMiddleware *auth.JWTMiddleware,
+	jwtConfig *auth.JWTConfig,
 	dbClient *database.PostgresClient,
 	cacheClient *cache.RedisClient,
 ) func(*gin.Engine) {
@@ -228,7 +226,7 @@ func setupTracedRoutes(
 
 			// Rutas protegidas con autenticación trazada
 			protected := v1.Group("")
-			protected.Use(jwtMiddleware.RequireAuth())
+			protected.Use(auth.JWTMiddleware(jwtConfig))
 			{
 				// CRUD con trazas detalladas
 				examples := protected.Group("/traced-examples")
@@ -261,7 +259,7 @@ func setupTracedRoutes(
 						}
 
 						err := dbWrapper.TraceQuery(*c, "INSERT", "traceable_examples", "INSERT INTO traceable_examples...", func() error {
-							return dbClient.DB().WithContext(c.Request.Context()).Create(model).Error
+							return dbClient.GetDB().WithContext(c.Request.Context()).Create(model).Error
 						})
 
 						if err != nil {
@@ -323,7 +321,7 @@ func setupTracedRoutes(
 						if !fromCache {
 							// Query de base de datos trazada
 							err := dbWrapper.TraceQuery(*c, "SELECT", "traceable_examples", "SELECT * FROM traceable_examples WHERE tenant_id = ?", func() error {
-								return dbClient.DB().WithContext(c.Request.Context()).
+								return dbClient.GetDB().WithContext(c.Request.Context()).
 									Where("tenant_id = ?", tenantID).
 									Find(&examples).Error
 							})

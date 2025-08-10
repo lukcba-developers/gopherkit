@@ -10,6 +10,16 @@ import (
 	"github.com/lukcba-developers/gopherkit/pkg/domain/entity"
 )
 
+// ServiceRegistryInterface defines the contract for service registry operations
+type ServiceRegistryInterface interface {
+	GetOrganizationConfig(ctx context.Context, organizationID string) (*entity.OrganizationConfig, error)
+	CreateOrganizationConfig(ctx context.Context, organizationID string, templateType entity.TemplateType) (*entity.OrganizationConfig, error)
+	UpdateOrganizationConfig(ctx context.Context, config *entity.OrganizationConfig) error
+	EnableService(ctx context.Context, organizationID, serviceName string) error
+	DisableService(ctx context.Context, organizationID, serviceName string) error
+	GetAvailableTemplates() []TemplateInfo
+}
+
 // ServiceRegistry manages which services are enabled for each organization
 type ServiceRegistry struct {
 	configRepo   OrganizationConfigRepository

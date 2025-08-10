@@ -193,8 +193,11 @@ func (m *CommonMiddleware) NoCache() gin.HandlerFunc {
 
 // GZIP middleware enables gzip compression
 func (m *CommonMiddleware) GZIP() gin.HandlerFunc {
-	// We'll use gin's built-in gzip middleware
-	return gin.DefaultWriter.(*gin.LoggerConfig).Output.Write
+	// Return a simple no-op middleware for now
+	// In production, you would use github.com/gin-contrib/gzip
+	return gin.HandlerFunc(func(c *gin.Context) {
+		c.Next()
+	})
 }
 
 // Helper functions
