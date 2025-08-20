@@ -5,6 +5,35 @@ Todos los cambios notables de GopherKit serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/),
 y este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.0.2] - 2025-08-20
+
+### ✨ Added
+- **Encriptación AES-256-GCM**: Implementación completa de encriptación/desencriptación en el sistema de cache
+  - Métodos `encrypt()` y `decrypt()` con AES-256-GCM
+  - Manejo automático de claves con padding para compatibilidad
+  - Soporte para deshabilitación condicional de encriptación
+  - Nonces aleatorios para máxima seguridad
+
+### 🔧 Fixed  
+- Corregidos warnings de staticcheck y linter
+- Optimizada detección de patrones de type assertion (S1034)
+- Mejorado manejo de datos vacíos en encriptación
+- Removido código en desuso detectado por análisis estático
+
+### 🧪 Testing
+- **+100% cobertura** de tests para métodos de encriptación
+- Tests comprehensivos para todos los casos edge:
+  - Encriptación deshabilitada (passthrough)
+  - Claves de diferentes longitudes
+  - Datos corruptos/inválidos
+  - Datos vacíos y de diferentes tamaños
+- Verificación de integridad y seguridad en round-trips
+
+### 🔒 Security
+- Implementación segura de AES-256-GCM con nonces únicos
+- Validación robusta de datos corruptos
+- Manejo seguro de claves de encriptación
+
 ## [1.0.1] - 2025-01-20
 
 ### 🔧 Fixed

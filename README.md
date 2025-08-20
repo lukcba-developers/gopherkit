@@ -31,9 +31,12 @@ Esta versión de GopherKit incluye todos los componentes comunes extraídos del 
 
 #### Cache Unificado
 - Soporte para Redis y cache en memoria
-- Fallback automático
-- Operaciones atómicas
-- Métricas integradas
+- Fallback automático y alta disponibilidad
+- Operaciones atómicas (SET NX, INCR)
+- **Encriptación AES-256-GCM**: Protección de datos sensibles en cache
+- Compresión automática para optimizar almacenamiento
+- Circuit Breaker integrado para resiliencia
+- Métricas detalladas y monitoreo en tiempo real
 
 #### Base de Datos
 - Gestión de conexiones PostgreSQL
