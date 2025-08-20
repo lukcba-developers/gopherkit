@@ -2,8 +2,12 @@ package cache
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -111,6 +115,7 @@ type Config struct {
 	// Características avanzadas
 	EnableCompression  bool
 	EnableEncryption   bool
+	EncryptionKey      string
 	EnableCircuitBreaker bool
 	EnableRetryPolicy    bool
 	
@@ -910,10 +915,79 @@ func (rm *RedisManager) decompress(data []byte) ([]byte, error) {
 
 // Placeholder para métodos de encriptación/desencriptación
 func (rm *RedisManager) encrypt(data []byte) ([]byte, error) {
-	// Implementar encriptación (AES, etc.)
-	return data, nil
+	if !rm.config.EnableEncryption || rm.config.EncryptionKey == "" {
+		return data, nil
+	}
+	
+	// Implementación básica AES-GCM
+	key := []byte(rm.config.EncryptionKey)
+	if len(key) != 32 {
+		// Ajustar key a 32 bytes para AES-256
+		adjusted := make([]byte, 32)
+		copy(adjusted, key)
+		key = adjusted
+	}
+	
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	
+	ciphertext := gcm.Seal(nonce, nonce, data, nil)
+	return ciphertext, nil
 }
 
+func (rm *RedisManager) decrypt(data []byte) ([]byte, error) {
+	if !rm.config.EnableEncryption || rm.config.EncryptionKey == "" {
+		return data, nil
+	}
+	
+	// Implementación básica AES-GCM
+	key := []byte(rm.config.EncryptionKey)
+	if len(key) != 32 {
+		// Ajustar key a 32 bytes para AES-256
+		adjusted := make([]byte, 32)
+		copy(adjusted, key)
+		key = adjusted
+	}
+	
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	
+	if len(data) < gcm.NonceSize() {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+	
+	nonce, ciphertext := data[:gcm.NonceSize()], data[gcm.NonceSize():]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Handle empty slice case
+	if plaintext == nil {
+		return []byte{}, nil
+	}
+	
+	return plaintext, nil
+}
 
 // Métodos del circuit breaker
 func (cb *CircuitBreaker) allowRequest() bool {
