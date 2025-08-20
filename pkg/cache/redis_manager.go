@@ -914,10 +914,6 @@ func (rm *RedisManager) encrypt(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-func (rm *RedisManager) decrypt(data []byte) ([]byte, error) {
-	// Implementar desencriptación
-	return data, nil
-}
 
 // Métodos del circuit breaker
 func (cb *CircuitBreaker) allowRequest() bool {

@@ -235,14 +235,14 @@ func TestUnifiedCache_MultipleOperations(t *testing.T) {
 			assert.NoError(t, err)
 			
 			// Handle different types appropriately
-			switch expectedValue.(type) {
+			switch expectedValue := expectedValue.(type) {
 			case int:
-				assert.Equal(t, float64(expectedValue.(int)), result)
+				assert.Equal(t, float64(expectedValue), result)
 			case []string:
 				// JSON unmarshaling converts []string to []interface{}
 				resultSlice, ok := result.([]interface{})
 				assert.True(t, ok)
-				expectedSlice := expectedValue.([]string)
+				expectedSlice := expectedValue
 				assert.Len(t, resultSlice, len(expectedSlice))
 				for i, expected := range expectedSlice {
 					assert.Equal(t, expected, resultSlice[i])
