@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewCacheMetrics(t *testing.T) {
-	metrics := NewCacheMetrics()
+func TestNewBasicCacheMetrics(t *testing.T) {
+	metrics := NewBasicCacheMetrics()
 	
 	assert.NotNil(t, metrics)
 	assert.NotNil(t, metrics.operations)
@@ -16,7 +16,7 @@ func TestNewCacheMetrics(t *testing.T) {
 }
 
 func TestCacheMetrics_RecordOperation(t *testing.T) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 
 	t.Run("record new operation", func(t *testing.T) {
 		metrics.RecordOperation("get", "test_key")
@@ -45,7 +45,7 @@ func TestCacheMetrics_RecordOperation(t *testing.T) {
 }
 
 func TestCacheMetrics_RecordOperationWithDuration(t *testing.T) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 
 	t.Run("record new operation with duration", func(t *testing.T) {
 		duration := 100 * time.Millisecond
@@ -69,7 +69,7 @@ func TestCacheMetrics_RecordOperationWithDuration(t *testing.T) {
 }
 
 func TestCacheMetrics_RecordError(t *testing.T) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 
 	t.Run("record error for new operation", func(t *testing.T) {
 		metrics.RecordError("failed_get")
@@ -99,7 +99,7 @@ func TestCacheMetrics_RecordError(t *testing.T) {
 }
 
 func TestCacheMetrics_GetStats(t *testing.T) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 
 	t.Run("empty stats", func(t *testing.T) {
 		stats := metrics.GetStats()
@@ -149,14 +149,13 @@ func TestCacheMetrics_GetStats(t *testing.T) {
 }
 
 func TestCacheMetrics_CalculateErrorRate(t *testing.T) {
-	metrics := NewCacheMetrics()
 
 	t.Run("no operations", func(t *testing.T) {
 		opMetrics := &OperationMetrics{
 			Count:  0,
 			Errors: 0,
 		}
-		rate := metrics.calculateErrorRate(opMetrics)
+		rate := calculateErrorRate(opMetrics)
 		assert.Equal(t, 0.0, rate)
 	})
 
@@ -165,7 +164,7 @@ func TestCacheMetrics_CalculateErrorRate(t *testing.T) {
 			Count:  10,
 			Errors: 0,
 		}
-		rate := metrics.calculateErrorRate(opMetrics)
+		rate := calculateErrorRate(opMetrics)
 		assert.Equal(t, 0.0, rate)
 	})
 
@@ -174,7 +173,7 @@ func TestCacheMetrics_CalculateErrorRate(t *testing.T) {
 			Count:  0,
 			Errors: 5,
 		}
-		rate := metrics.calculateErrorRate(opMetrics)
+		rate := calculateErrorRate(opMetrics)
 		assert.Equal(t, 1.0, rate)
 	})
 
@@ -183,13 +182,13 @@ func TestCacheMetrics_CalculateErrorRate(t *testing.T) {
 			Count:  7,  // 7 successes
 			Errors: 3,  // 3 errors
 		}
-		rate := metrics.calculateErrorRate(opMetrics)
+		rate := calculateErrorRate(opMetrics)
 		assert.Equal(t, 0.3, rate) // 3/10
 	})
 }
 
 func TestCacheMetrics_Reset(t *testing.T) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 	
 	// Record some operations
 	metrics.RecordOperation("get", "key1")
@@ -216,7 +215,7 @@ func TestCacheMetrics_Reset(t *testing.T) {
 }
 
 func TestCacheMetrics_ConcurrentAccess(t *testing.T) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 	
 	// This test ensures no race conditions exist when accessing metrics concurrently
 	// Run multiple goroutines that record operations
@@ -252,7 +251,7 @@ func TestCacheMetrics_ConcurrentAccess(t *testing.T) {
 }
 
 func TestCacheMetrics_AverageDurationCalculation(t *testing.T) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 
 	t.Run("single operation with duration", func(t *testing.T) {
 		duration := 100 * time.Millisecond
@@ -293,7 +292,7 @@ func TestCacheMetrics_AverageDurationCalculation(t *testing.T) {
 
 func TestCacheMetrics_UptimeTracking(t *testing.T) {
 	startTime := time.Now()
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 	
 	// Wait a small amount to ensure uptime is measurable
 	time.Sleep(10 * time.Millisecond)
@@ -316,7 +315,7 @@ func TestCacheMetrics_UptimeTracking(t *testing.T) {
 
 // Benchmark tests
 func BenchmarkCacheMetrics_RecordOperation(b *testing.B) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -325,7 +324,7 @@ func BenchmarkCacheMetrics_RecordOperation(b *testing.B) {
 }
 
 func BenchmarkCacheMetrics_RecordOperationWithDuration(b *testing.B) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 	duration := 10 * time.Millisecond
 	
 	b.ResetTimer()
@@ -335,7 +334,7 @@ func BenchmarkCacheMetrics_RecordOperationWithDuration(b *testing.B) {
 }
 
 func BenchmarkCacheMetrics_RecordError(b *testing.B) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 	
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -344,7 +343,7 @@ func BenchmarkCacheMetrics_RecordError(b *testing.B) {
 }
 
 func BenchmarkCacheMetrics_GetStats(b *testing.B) {
-	metrics := NewCacheMetrics()
+	metrics := NewBasicCacheMetrics()
 	
 	// Pre-populate with some data
 	for i := 0; i < 10; i++ {
