@@ -94,7 +94,7 @@ type UnifiedCache struct {
 	redisClient  *redis.Client
 	memoryCache  *MemoryCache
 	logger       *logrus.Entry
-	metrics      *CacheMetrics
+	metrics      *BasicCacheMetrics
 }
 
 // NewUnifiedCache crea una nueva instancia de cache unificado
@@ -120,7 +120,7 @@ func NewUnifiedCache(config *CacheConfig, logger *logrus.Logger) (*UnifiedCache,
 
 	// Initialize metrics if enabled
 	if config.EnableMetrics {
-		cache.metrics = NewCacheMetrics()
+		cache.metrics = NewBasicCacheMetrics()
 	}
 
 	logger.WithFields(logrus.Fields{

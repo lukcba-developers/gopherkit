@@ -2,10 +2,10 @@ package cache
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -439,7 +439,7 @@ func (cw *CacheWrapper) SetMultiple(ctx context.Context, entries map[CacheKey]Mu
 				}).Error("Error en SetMultiple")
 				
 				// Incrementar contador de errores de forma atómica
-				sync.AddInt64(&errorCount, 1)
+				atomic.AddInt64(&errorCount, 1)
 			}
 		}(key, entry)
 	}
@@ -559,7 +559,7 @@ func (dl *DistributedLock) autoRenew(ctx context.Context) {
 			}
 			
 			// Renovar TTL del lock
-			err := dl.manager.Expire(ctx, dl.key, dl.ttl)
+			err := dl.manager.getClient().Expire(ctx, dl.key, dl.ttl).Err()
 			if err != nil {
 				logrus.WithFields(logrus.Fields{
 					"lock_key": dl.key,

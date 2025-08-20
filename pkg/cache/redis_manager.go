@@ -20,7 +20,6 @@ import (
 var (
 	instance *RedisManager
 	once     sync.Once
-	logger   = logrus.WithField("component", "gopherkit.cache")
 )
 
 // RedisManager gestiona conexiones Redis con soporte avanzado para namespace, métricas y configuración dinámica
@@ -126,7 +125,7 @@ type Config struct {
 	// Integración con gopherkit
 	BaseConfig     *config.BaseConfig
 	AlertManager   *monitoring.AlertManager
-	PrometheusIntegration *monitoring.PrometheusIntegration
+	// PrometheusIntegration *monitoring.PrometheusIntegration // TODO: implement when available
 }
 
 // CircuitBreaker implementa patrón circuit breaker para Redis
@@ -190,6 +189,7 @@ func NewRedisManager(config *Config) (*RedisManager, error) {
 	} else {
 		manager.metrics = &CacheMetrics{
 			BusinessMetrics: make(map[string]int64),
+			mu: sync.RWMutex{},
 		}
 	}
 
@@ -236,7 +236,7 @@ func NewRedisManager(config *Config) (*RedisManager, error) {
 		manager.integratewithMonitoring(config.AlertManager)
 	}
 
-	logger.WithFields(logrus.Fields{
+	logrus.WithFields(logrus.Fields{
 		"namespace":          config.Namespace,
 		"mode":              config.Mode,
 		"ttl":               config.TTL,
@@ -254,7 +254,7 @@ func GetInstance(config *Config) (*RedisManager, error) {
 	once.Do(func() {
 		instance, err = NewRedisManager(config)
 		if err != nil {
-			logger.WithError(err).Error("Error creando instancia Redis Manager")
+			logrus.WithError(err).Error("Error creando instancia Redis Manager")
 		}
 	})
 	return instance, err
@@ -395,9 +395,12 @@ func (rm *RedisManager) Get(ctx context.Context, key string) (string, error) {
 
 	// Ejecutar con política de reintentos
 	if rm.retryPolicy != nil {
-		val, err = rm.executeWithRetry(func() (interface{}, error) {
+		result, err := rm.executeWithRetry(func() (interface{}, error) {
 			return rm.getClient().Get(ctx, fullKey).Result()
-		}).(string), err
+		})
+		if err == nil {
+			val = result.(string)
+		}
 	} else {
 		val, err = rm.getClient().Get(ctx, fullKey).Result()
 	}
@@ -423,7 +426,7 @@ func (rm *RedisManager) Get(ctx context.Context, key string) (string, error) {
 	if rm.compressionEnabled {
 		decompressed, err := rm.decompress([]byte(val))
 		if err != nil {
-			logger.WithError(err).Warn("Error descomprimiendo valor")
+			logrus.WithError(err).Warn("Error descomprimiendo valor")
 			return val, nil // Retornar valor original si falla descompresión
 		}
 		return string(decompressed), nil
@@ -492,7 +495,7 @@ func (rm *RedisManager) SetWithTTL(ctx context.Context, key string, value interf
 	if rm.compressionEnabled {
 		compressed, err := rm.compress(val)
 		if err != nil {
-			logger.WithError(err).Warn("Error comprimiendo valor, usando original")
+			logrus.WithError(err).Warn("Error comprimiendo valor, usando original")
 		} else {
 			val = compressed
 			rm.updateCompressionRatio(len(val), len(compressed))
@@ -503,7 +506,7 @@ func (rm *RedisManager) SetWithTTL(ctx context.Context, key string, value interf
 	if rm.encryptionEnabled {
 		encrypted, err := rm.encrypt(val)
 		if err != nil {
-			logger.WithError(err).Warn("Error encriptando valor, usando original")
+			logrus.WithError(err).Warn("Error encriptando valor, usando original")
 		} else {
 			val = encrypted
 		}
@@ -643,7 +646,7 @@ func (rm *RedisManager) DeletePattern(ctx context.Context, pattern string) error
 		}
 		
 		rm.recordDelete()
-		logger.WithField("deleted_keys", len(keys)).Info("Eliminadas claves por patrón")
+		logrus.WithField("deleted_keys", len(keys)).Info("Eliminadas claves por patrón")
 	}
 
 	return nil
@@ -775,7 +778,7 @@ func (rm *RedisManager) healthChecker() {
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			if err := rm.Health(ctx); err != nil {
-				logger.WithError(err).Warn("Health check falló")
+				logrus.WithError(err).Warn("Health check falló")
 			}
 			cancel()
 		case <-rm.shutdownCh:
@@ -822,7 +825,7 @@ func (rm *RedisManager) resetOldStats() {
 	if rm.metrics.OperationCount > 1000000 {
 		rm.metrics.LatencySum = rm.metrics.LatencySum / 2
 		rm.metrics.OperationCount = rm.metrics.OperationCount / 2
-		logger.Info("Reset estadísticas de cache para prevenir overflow")
+		logrus.Info("Reset estadísticas de cache para prevenir overflow")
 	}
 	rm.metrics.mu.Unlock()
 }
@@ -863,7 +866,7 @@ func (rm *RedisManager) recordError(errorType string) {
 		rm.metrics.errorCounter.Inc()
 	}
 	
-	logger.WithField("error_type", errorType).Warn("Error de cache registrado")
+	logrus.WithField("error_type", errorType).Warn("Error de cache registrado")
 }
 
 func (rm *RedisManager) recordLatency(duration time.Duration) {
@@ -1025,8 +1028,8 @@ func (rm *RedisManager) integratewithMonitoring(alertManager *monitoring.AlertMa
 					// Enviar métricas al sistema de monitoreo
 					if basicMetrics, ok := metrics["basic"].(map[string]interface{}); ok {
 						if hitRatio, ok := basicMetrics["hit_ratio"].(float64); ok && hitRatio < 0.5 {
-							alertManager.TriggerAlert("redis_low_hit_ratio", 
-								fmt.Sprintf("Ratio de aciertos Redis bajo: %.2f", hitRatio))
+							alertManager.FireAlert("redis-cache", "redis_low_hit_ratio", 
+								fmt.Sprintf("Ratio de aciertos Redis bajo: %.2f", hitRatio), "warning", nil)
 						}
 					}
 				case <-rm.shutdownCh:

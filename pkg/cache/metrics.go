@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// CacheMetrics recolecta métricas de cache
-type CacheMetrics struct {
+// BasicCacheMetrics recolecta métricas de cache
+type BasicCacheMetrics struct {
 	operations map[string]*OperationMetrics
 	mutex      sync.RWMutex
 	startTime  time.Time
@@ -20,16 +20,16 @@ type OperationMetrics struct {
 	Errors    int64
 }
 
-// NewCacheMetrics crea un nuevo recolector de métricas
-func NewCacheMetrics() *CacheMetrics {
-	return &CacheMetrics{
+// NewBasicCacheMetrics crea un nuevo recolector de métricas
+func NewBasicCacheMetrics() *BasicCacheMetrics {
+	return &BasicCacheMetrics{
 		operations: make(map[string]*OperationMetrics),
 		startTime:  time.Now(),
 	}
 }
 
 // RecordOperation registra una operación de cache
-func (m *CacheMetrics) RecordOperation(operation, key string) {
+func (m *BasicCacheMetrics) RecordOperation(operation, key string) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -43,7 +43,7 @@ func (m *CacheMetrics) RecordOperation(operation, key string) {
 }
 
 // RecordOperationWithDuration registra una operación con duración
-func (m *CacheMetrics) RecordOperationWithDuration(operation, key string, duration time.Duration) {
+func (m *BasicCacheMetrics) RecordOperationWithDuration(operation, key string, duration time.Duration) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -58,7 +58,7 @@ func (m *CacheMetrics) RecordOperationWithDuration(operation, key string, durati
 }
 
 // RecordError registra un error en una operación
-func (m *CacheMetrics) RecordError(operation string) {
+func (m *BasicCacheMetrics) RecordError(operation string) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
@@ -70,7 +70,7 @@ func (m *CacheMetrics) RecordError(operation string) {
 }
 
 // GetStats retorna todas las estadísticas
-func (m *CacheMetrics) GetStats() map[string]interface{} {
+func (m *BasicCacheMetrics) GetStats() map[string]interface{} {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 
@@ -91,7 +91,7 @@ func (m *CacheMetrics) GetStats() map[string]interface{} {
 			"total_time":   metrics.TotalTime.String(),
 			"avg_duration": avgDuration.String(),
 			"last_time":    metrics.LastTime.Format(time.RFC3339),
-			"error_rate":   m.calculateErrorRate(metrics),
+			"error_rate":   calculateErrorRate(metrics),
 		}
 	}
 
@@ -99,7 +99,7 @@ func (m *CacheMetrics) GetStats() map[string]interface{} {
 }
 
 // calculateErrorRate calcula la tasa de error
-func (m *CacheMetrics) calculateErrorRate(metrics *OperationMetrics) float64 {
+func calculateErrorRate(metrics *OperationMetrics) float64 {
 	total := metrics.Count + metrics.Errors
 	if total == 0 {
 		return 0.0
@@ -108,7 +108,7 @@ func (m *CacheMetrics) calculateErrorRate(metrics *OperationMetrics) float64 {
 }
 
 // Reset resetea todas las métricas
-func (m *CacheMetrics) Reset() {
+func (m *BasicCacheMetrics) Reset() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 

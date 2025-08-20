@@ -13,7 +13,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -105,6 +104,7 @@ type InfrastructureMetrics struct {
 
 // DockerStats estadísticas de contenedores Docker
 type DockerStats struct {
+	ContainerName string  `json:"container_name"`
 	CPUPercent   float64 `json:"cpu_percent"`
 	MemoryUsage  int64   `json:"memory_usage"`
 	MemoryLimit  int64   `json:"memory_limit"`
@@ -485,7 +485,12 @@ func (rtm *RealTimeMonitor) getActiveAlerts() []Alert {
 	if rtm.alertManager == nil {
 		return []Alert{}
 	}
-	return rtm.alertManager.GetActiveAlerts()
+	alertPtrs := rtm.alertManager.GetActiveAlerts()
+	alerts := make([]Alert, len(alertPtrs))
+	for i, alertPtr := range alertPtrs {
+		alerts[i] = *alertPtr
+	}
+	return alerts
 }
 
 func (rtm *RealTimeMonitor) calculateSystemHealth() string {

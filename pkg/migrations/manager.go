@@ -263,8 +263,8 @@ func (m *Manager) Run() error {
 		
 		// Send alert if configured
 		if m.alertManager != nil {
-			m.alertManager.TriggerAlert("migrations_failed", 
-				fmt.Sprintf("Migration failed for service %s: %v", m.config.ServiceName, err))
+			m.alertManager.FireAlert(m.config.ServiceName, "migrations_failed", 
+				fmt.Sprintf("Migration failed for service %s: %v", m.config.ServiceName, err), "error", nil)
 		}
 		
 		return err
@@ -903,8 +903,8 @@ func (m *Manager) Rollback(targetVersion uint) error {
 
 	// Send alert
 	if m.alertManager != nil {
-		m.alertManager.TriggerAlert("migration_rollback", 
-			fmt.Sprintf("Migration rolled back for service %s to version %d", m.config.ServiceName, targetVersion))
+		m.alertManager.FireAlert(m.config.ServiceName, "migration_rollback", 
+			fmt.Sprintf("Migration rolled back for service %s to version %d", m.config.ServiceName, targetVersion), "warning", nil)
 	}
 
 	logger.WithFields(logrus.Fields{

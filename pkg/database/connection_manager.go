@@ -633,7 +633,7 @@ func (cm *ConnectionManager) GetHealthStatus() map[string]interface{} {
 		"wait_count":        stats.WaitCount,
 		"wait_duration":     stats.WaitDuration.String(),
 		"max_open_conns":    stats.MaxOpenConnections,
-		"max_idle_conns":    stats.MaxIdleConnections,
+		"idle_conns":        stats.Idle,
 		"config": map[string]interface{}{
 			"enable_fallback":      cm.config.EnableFallback,
 			"enable_metrics":       cm.config.EnableMetrics,

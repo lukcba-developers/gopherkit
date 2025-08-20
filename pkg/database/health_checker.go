@@ -249,14 +249,6 @@ func (hc *HealthChecker) checkActiveConnections(db *sql.DB) CheckDetail {
 	// Calcular porcentaje de uso del pool
 	usage := float64(stats.InUse) / float64(stats.MaxOpenConnections) * 100
 
-	details := map[string]interface{}{
-		"open_connections": stats.OpenConnections,
-		"in_use":          stats.InUse,
-		"idle":            stats.Idle,
-		"max_open":        stats.MaxOpenConnections,
-		"usage_percent":   usage,
-	}
-
 	// Determinar estado basado en el uso del pool
 	if usage < 70 {
 		check.Status = HealthStatusHealthy

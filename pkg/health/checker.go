@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -429,7 +428,7 @@ type AdvancedCheckerConfig struct {
 	// Integración con gopherkit
 	BaseConfig            *config.BaseConfig
 	AlertManager          *monitoring.AlertManager
-	PrometheusIntegration *monitoring.PrometheusIntegration
+	// PrometheusIntegration *monitoring.PrometheusIntegration // TODO: implement when available
 }
 
 // TrendAnalyzer analiza tendencias de salud a lo largo del tiempo
@@ -1210,7 +1209,10 @@ func (hc *AdvancedHealthChecker) sendAdvancedAlertsToManager(alerts []HealthAler
 	for _, alert := range alerts {
 		go func(a HealthAlert) {
 			if hc.alertManager != nil {
-				hc.alertManager.TriggerAlert(a.Component, a.Message)
+				hc.alertManager.FireAlert("health-checker", a.Component, a.Message, "error", map[string]interface{}{
+					"component": a.Component,
+					"level":     a.Level,
+				})
 			}
 		}(alert)
 	}
