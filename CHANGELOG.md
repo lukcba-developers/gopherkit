@@ -5,6 +5,37 @@ Todos los cambios notables de GopherKit serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/),
 y este proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
+## [1.0.3] - 2025-08-21
+
+### 🗂️ **Reorganización de Ejemplos**
+- **BREAKING**: Consolidación completa de estructura de ejemplos
+  - Eliminado directorio duplicado `example/` 
+  - Reorganización jerárquica de `examples/` por categorías
+  - Nueva estructura: `basic/`, `api-services/`, `observability/`, `infrastructure/`, `guides/`
+
+### 📚 **Documentación**
+- **Nuevos READMEs**: Documentación completa para cada categoría de ejemplos
+- **Índice principal**: `examples/README.md` with navegación clara
+- **Referencias actualizadas**: Links corregidos en `docs/EXAMPLES.md` y `README.md`
+- **Guías organizadas**: Migración de guías a `examples/guides/`
+
+### 🏗️ **Estructura Mejorada**
+- **Categorización lógica**: Ejemplos organizados por complejidad y propósito
+- **Navegación intuitiva**: Progresión natural desde básico hasta avanzado  
+- **Escalabilidad**: Estructura preparada para futuros ejemplos
+- **Limpieza**: Eliminados archivos binarios y temporales redundantes
+
+### 🔧 **Fixes**
+- **Tests de configuración**: Resueltos problemas de compilación en `hot_reload_test.go`
+  - Corregido `mockLogger` undefined
+  - Arregladas incompatibilidades de tipos en `UpdateConfig`
+  - Fixed `RegisterCallback` signature y return values
+  - Solucionado lock copy issue en `GetMetrics`
+
+### ✅ **Testing**
+- **100% tests passing**: Todos los tests de `pkg/config/` funcionando
+- **Ejemplo básico verificado**: `examples/basic/quickstart/` funcional
+
 ## [1.0.2] - 2025-08-20
 
 ### ✨ Added

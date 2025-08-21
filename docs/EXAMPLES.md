@@ -1,6 +1,28 @@
 # Ejemplos de Uso - GopherKit
 
-## Índice
+> 📁 **Todos los ejemplos están disponibles en la carpeta [`examples/`](../examples/)**
+
+## 🚀 Ejemplos Disponibles
+
+### 🟢 **Básicos**
+- [`examples/basic/quickstart/`](../examples/basic/quickstart/) - Inicio rápido con GopherKit
+
+### 🔌 **APIs Completas**
+- [`examples/api-services/auth-api/`](../examples/api-services/auth-api/) - API de autenticación
+- [`examples/api-services/user-api/`](../examples/api-services/user-api/) - API de gestión de usuarios
+
+### 📊 **Observabilidad**
+- [`examples/observability/metrics/`](../examples/observability/metrics/) - Métricas con Prometheus
+- [`examples/observability/otel/`](../examples/observability/otel/) - OpenTelemetry tracing
+
+### 🏗️ **Infraestructura**
+- [`examples/infrastructure/grafana/`](../examples/infrastructure/grafana/) - Dashboards
+- [`examples/infrastructure/prometheus/`](../examples/infrastructure/prometheus/) - Configuración
+
+### 📖 **Guías**
+- [`examples/guides/migration-guide.md`](../examples/guides/migration-guide.md) - Migración de servicios
+
+## 📋 Índice de Ejemplos Detallados
 
 1. [Aplicación API REST Completa](#aplicación-api-rest-completa)
 2. [Microservicio con CQRS](#microservicio-con-cqrs)

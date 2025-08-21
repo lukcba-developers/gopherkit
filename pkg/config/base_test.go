@@ -15,13 +15,13 @@ func TestLoadBaseConfig(t *testing.T) {
 		"PORT", "ENVIRONMENT", "DATABASE_URL", "JWT_SECRET",
 		"REDIS_HOST", "LOG_LEVEL", "SERVICE_VERSION",
 	}
-	
+
 	originalEnv := make(map[string]string)
 	for _, key := range envVars {
 		originalEnv[key] = os.Getenv(key)
 		os.Unsetenv(key)
 	}
-	
+
 	// Restore environment after test
 	defer func() {
 		for key, value := range originalEnv {
@@ -58,12 +58,12 @@ func TestLoadBaseConfig(t *testing.T) {
 		{
 			name: "production configuration",
 			envVars: map[string]string{
-				"ENVIRONMENT":    "production",
-				"PORT":           "9000",
-				"DATABASE_URL":   "postgresql://prod_user:prod_pass@prod_host:5432/prod_db",
-				"JWT_SECRET":     "super-secure-production-secret-key-that-is-long-enough",
-				"DB_PASSWORD":    "production-password",
-				"LOG_LEVEL":      "warn",
+				"ENVIRONMENT":  "production",
+				"PORT":         "9000",
+				"DATABASE_URL": "postgresql://prod_user:prod_pass@prod_host:5432/prod_db",
+				"JWT_SECRET":   "super-secure-production-secret-key-that-is-long-enough",
+				"DB_PASSWORD":  "production-password",
+				"LOG_LEVEL":    "warn",
 			},
 			serviceName: "prod-service",
 			wantError:   false,
@@ -121,7 +121,7 @@ func TestLoadBaseConfig(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, cfg)
-				
+
 				if tt.validate != nil {
 					tt.validate(t, cfg)
 				}
@@ -244,6 +244,7 @@ func TestValidateConfig(t *testing.T) {
 			config: &BaseConfig{
 				Server: ServerConfig{
 					Port:        "8080",
+					MetricsPort: "9090",
 					Environment: "development",
 				},
 				Security: SecurityConfig{
@@ -253,6 +254,7 @@ func TestValidateConfig(t *testing.T) {
 				},
 				Observability: ObservabilityConfig{
 					ServiceName: "test-service",
+					LogLevel:    "info",
 				},
 			},
 			wantError: false,
@@ -262,6 +264,7 @@ func TestValidateConfig(t *testing.T) {
 			config: &BaseConfig{
 				Server: ServerConfig{
 					Port:        "8080",
+					MetricsPort: "9090",
 					Environment: "production",
 				},
 				Database: DatabaseConfig{
@@ -274,6 +277,7 @@ func TestValidateConfig(t *testing.T) {
 				},
 				Observability: ObservabilityConfig{
 					ServiceName: "test-service",
+					LogLevel:    "info",
 				},
 			},
 			wantError: false,

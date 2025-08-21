@@ -786,7 +786,15 @@ func (hr *HotReloader) GetMetrics() *HotReloadMetrics {
 	defer hr.metrics.mu.RUnlock()
 	
 	// Retornar copia de las métricas
-	metrics := *hr.metrics
+	metrics := HotReloadMetrics{
+		TotalReloads:       hr.metrics.TotalReloads,
+		SuccessfulReloads:  hr.metrics.SuccessfulReloads,
+		FailedReloads:      hr.metrics.FailedReloads,
+		CallbackExecutions: hr.metrics.CallbackExecutions,
+		WatchedFilesCount:  hr.metrics.WatchedFilesCount,
+		AverageReloadTime:  hr.metrics.AverageReloadTime,
+		LastReloadTime:     hr.metrics.LastReloadTime,
+	}
 	
 	// Copiar mapas
 	metrics.FileChangeEvents = make(map[string]int64)

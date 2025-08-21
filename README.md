@@ -76,6 +76,27 @@ Esta versión de GopherKit incluye todos los componentes comunes extraídos del 
 go get github.com/lukcba-developers/gopherkit
 ```
 
+## 📚 **Ejemplos**
+
+> 🚀 **¡Comienza aquí!** Todos los ejemplos están en [`examples/`](./examples/)
+
+### 🟢 **Inicio Rápido**
+```bash
+# Ejemplo básico
+cd examples/basic/quickstart
+go run main.go
+```
+
+### 🔌 **APIs Completas**
+- **[Autenticación](./examples/api-services/auth-api/)** - JWT, registro, login
+- **[Gestión de usuarios](./examples/api-services/user-api/)** - CRUD completo con cache
+
+### 📊 **Observabilidad**
+- **[Métricas](./examples/observability/metrics/)** - Prometheus + Grafana
+- **[Tracing](./examples/observability/otel/)** - OpenTelemetry distribuido
+
+📖 **[Ver todos los ejemplos →](./examples/)**
+
 ## Uso de la Librería
 
 ### Uso Básico del Paquete Principal

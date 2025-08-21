@@ -10,6 +10,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// mockLogger implements Logger interface for testing
+type mockLogger struct{}
+
+func (ml *mockLogger) Info(msg string)                                 {}
+func (ml *mockLogger) Warn(msg string)                                 {}
+func (ml *mockLogger) Error(msg string)                                {}
+func (ml *mockLogger) Debugf(format string, args ...interface{})      {}
+func (ml *mockLogger) WithField(key string, value interface{}) Logger { return ml }
+
 func TestHotReloader(t *testing.T) {
 	// Create temporary directory for test files
 	tmpDir, err := os.MkdirTemp("", "hot_reload_test")
@@ -60,51 +69,40 @@ func TestHotReloader(t *testing.T) {
 		assert.NotNil(t, config)
 
 		// Test UpdateConfig
-		newConfig := &BaseConfig{
-			Server: ServerConfig{
-				Port:        "9000",
-				MetricsPort: "9091",
-				Environment: "test",
-			},
-			Observability: ObservabilityConfig{
-				ServiceName: "updated-service",
-				LogLevel:    "debug",
-			},
+		updates := map[string]interface{}{
+			"database_mode": "test",
+			"cache_enabled": false,
 		}
 
-		err = reloader.UpdateConfig(newConfig)
+		err = reloader.UpdateConfig(updates)
 		assert.NoError(t, err)
 
 		// Verify config was updated
 		updated := reloader.GetConfig()
-		assert.Equal(t, "9000", updated.Server.Port)
-		assert.Equal(t, "updated-service", updated.Observability.ServiceName)
+		assert.Equal(t, "test", updated.DatabaseMode)
+		assert.False(t, updated.CacheConfig.Enabled)
 	})
 
 	t.Run("SaveConfig", func(t *testing.T) {
 		reloader, err := NewHotReloader(configFile, baseConfig, &mockLogger{})
 		assert.NoError(t, err)
 
-		config := &BaseConfig{
-			Server: ServerConfig{
-				Port:        "8888",
-				MetricsPort: "9999",
-				Environment: "test",
-			},
-			Observability: ObservabilityConfig{
-				ServiceName: "saved-service",
-				LogLevel:    "warn",
-			},
+		// Update config first
+		updates := map[string]interface{}{
+			"database_mode": "saved",
+			"feature_flags.test_feature": true,
 		}
+		err = reloader.UpdateConfig(updates)
+		assert.NoError(t, err)
 
-		err = reloader.SaveConfig(config)
+		err = reloader.SaveConfig()
 		assert.NoError(t, err)
 
 		// Verify file was written
 		content, err := os.ReadFile(configFile)
 		assert.NoError(t, err)
-		assert.Contains(t, string(content), "8888")
-		assert.Contains(t, string(content), "saved-service")
+		assert.Contains(t, string(content), "saved")
+		assert.Contains(t, string(content), "test_feature")
 	})
 
 	t.Run("RegisterCallback", func(t *testing.T) {
@@ -112,28 +110,21 @@ func TestHotReloader(t *testing.T) {
 		assert.NoError(t, err)
 
 		callbackCalled := false
-		err = reloader.RegisterCallback("test_callback", func(old, new *BaseConfig) error {
+		reloader.RegisterCallback("test_callback", func(old, new *DynamicConfig) error {
 			callbackCalled = true
 			return nil
 		})
 
-		assert.NoError(t, err)
-
 		// Update config to trigger callback
-		newConfig := &BaseConfig{
-			Server: ServerConfig{
-				Port:        "7777",
-				MetricsPort: "8888",
-				Environment: "callback_test",
-			},
-			Observability: ObservabilityConfig{
-				ServiceName: "callback-service",
-				LogLevel:    "error",
-			},
+		updates := map[string]interface{}{
+			"database_mode": "callback_test",
 		}
 
-		err = reloader.UpdateConfig(newConfig)
+		err = reloader.UpdateConfig(updates)
 		assert.NoError(t, err)
+		
+		// Wait a bit for async callback to execute
+		time.Sleep(10 * time.Millisecond)
 		assert.True(t, callbackCalled)
 	})
 
@@ -181,7 +172,7 @@ func TestHotReloader(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Test with a feature that should be enabled
-		enabled := reloader.IsFeatureEnabled("metrics")
+		enabled := reloader.IsFeatureEnabled("hot_reload_enabled")
 		assert.True(t, enabled)
 
 		// Test with a feature that should be disabled
@@ -297,25 +288,16 @@ func TestHotReloaderEdgeCases(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Register callback that returns error
-		err = reloader.RegisterCallback("error_callback", func(old, new *BaseConfig) error {
+		reloader.RegisterCallback("error_callback", func(old, new *DynamicConfig) error {
 			return fmt.Errorf("callback error")
 		})
-		assert.NoError(t, err)
 
 		// Update config - should handle callback error gracefully
-		newConfig := &BaseConfig{
-			Server: ServerConfig{
-				Port:        "7777",
-				MetricsPort: "8888",
-				Environment: "error_test",
-			},
-			Observability: ObservabilityConfig{
-				ServiceName: "error-service",
-				LogLevel:    "error",
-			},
+		updates := map[string]interface{}{
+			"database_mode": "error_test",
 		}
 
-		err = reloader.UpdateConfig(newConfig)
+		err = reloader.UpdateConfig(updates)
 		// Should not return error even if callback fails
 		assert.NoError(t, err)
 	})
